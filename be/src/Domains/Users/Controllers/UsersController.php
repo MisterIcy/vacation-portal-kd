@@ -6,8 +6,9 @@ namespace App\Domains\Users\Controllers;
 
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Users\Models\UserModel;
-use App\Domains\Users\Models\UserRole;
 use App\Domains\Users\Repositories\UsersRepository;
+use App\Domains\Users\Requests\CreateUserRequest;
+use App\Domains\Users\Requests\UpdateUserRequest;
 use App\Shared\JsonErrorResponse;
 use DateMalformedStringException;
 use JsonException;
@@ -30,16 +31,15 @@ readonly class UsersController
     {
         $this->requireManager($request);
 
-        /** @var array<string, string> $body */
-        $body = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $input = CreateUserRequest::fromRequest($request);
 
         $userModel = new UserModel(
             null,
-            $body['email'] ?? '',
-            $body['password'] ?? '', // Do not allow the password to be null
-            $body['name'] ?? '',
-            $body['employee_code'] ?? '',
-            UserRole::from($body['role'] ?? 'employee')
+            $input->getEmail(),
+            $input->getPassword(),
+            $input->getName(),
+            $input->getEmployeeCode(),
+            $input->getRole()
         );
 
         $userModel = $this->usersRepository->create($userModel);
@@ -126,21 +126,18 @@ readonly class UsersController
     {
         $this->requireManager($request);
 
-        /** @var array<string, string> $body */
-        $body = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $input = UpdateUserRequest::fromRequest($request);
         $existingUserModel = $this->usersRepository->findById((int) $params['id']);
 
-        // A missing or empty password means "keep the current one" (null is
-        // never written by the repository); a provided one is validated by the model.
-        $newPassword = ($body['password'] ?? '') === '' ? null : $body['password'];
-
+        // A field that was not sent keeps its current value. No password means "keep
+        // the current one" (the repository never writes null); a new one is validated by the model.
         $userModel = new UserModel(
             $existingUserModel->getId(),
-            $body['email'] ?? $existingUserModel->getEmail(),
-            $newPassword,
-            $body['name'] ?? $existingUserModel->getName(),
+            $input->getEmail() ?? $existingUserModel->getEmail(),
+            $input->getPassword(),
+            $input->getName() ?? $existingUserModel->getName(),
             $existingUserModel->getEmployeeCode(),
-            UserRole::from($body['role'] ?? $existingUserModel->getRole()->value)
+            $input->getRole() ?? $existingUserModel->getRole()
         );
 
         $userModel = $this->usersRepository->update($userModel);

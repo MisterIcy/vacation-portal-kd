@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Shared;
 
+use BackedEnum;
 use DateTime;
 use DateTimeZone;
 use InvalidArgumentException;
@@ -63,6 +64,30 @@ final readonly class RequestBody
     public function optionalString(string $field): ?string
     {
         return $this->has($field) ? $this->stringValue($field) : null;
+    }
+
+    /**
+     * A string field that must be one of an enum's values (e.g. a role).
+     *
+     * @template T of BackedEnum
+     * @param class-string<T> $enum
+     * @return T|null null when the field is absent
+     * @throws InvalidArgumentException when the value is not a string or not one of the cases
+     */
+    public function optionalEnum(string $field, string $enum): ?BackedEnum
+    {
+        $value = $this->optionalString($field);
+        if ($value === null) {
+            return null;
+        }
+
+        $case = $enum::tryFrom($value);
+        if ($case === null) {
+            $allowed = implode(', ', array_map(fn (BackedEnum $case) => (string) $case->value, $enum::cases()));
+            throw new InvalidArgumentException("'$field' must be one of: $allowed.");
+        }
+
+        return $case;
     }
 
     /**
