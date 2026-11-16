@@ -151,6 +151,13 @@ with the git commit, and promoted from staging to production after approval.
 | Add the first manager | The seed creates the initial manager. Further managers are created by an existing manager through the user form. |
 | API errors | Check the health endpoint, the application logs and the database connection, in that order. |
 
+**Configuration:** the application checks its settings when it starts and
+refuses to run if one is missing, naming the setting (never its value). A
+`.env` file is optional, so a deployment can provide the variables directly.
+A `JWT_SECRET` that is the placeholder from `.env.example`, or shorter than 32
+bytes, only logs a warning while developing, but stops the application when
+`APP_ENV=production` is set. Generate a real one with `openssl rand -base64 48`.
+
 **Database users:** the application and the migrations should not share one
 account. The migrations need to change the schema; the application only needs
 to read and write rows, so that a flaw such as a SQL injection could not drop
