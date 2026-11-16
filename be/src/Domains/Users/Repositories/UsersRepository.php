@@ -7,6 +7,7 @@ namespace App\Domains\Users\Repositories;
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
 use App\Shared\Database;
+use App\Shared\DatabaseErrors;
 use App\Shared\ModelCollection;
 use App\Shared\Ports\PasswordHasher;
 use DateMalformedStringException;
@@ -39,7 +40,7 @@ readonly class UsersRepository
                 'role' => $user->getRole()->value,
             ]);
         } catch (PDOException $e) {
-            if ($e->getCode() === 23000) {
+            if (DatabaseErrors::isDuplicateEntry($e)) {
                 throw new InvalidArgumentException("Email ('{$user->getEmail()}') or Employee code ('{$user->getEmployeeCode()}') is already in use.");
             }
 
@@ -143,7 +144,7 @@ readonly class UsersRepository
         try {
             $this->db->execute($sql, $params);
         } catch (PDOException $e) {
-            if ($e->getCode() === 23000) {
+            if (DatabaseErrors::isDuplicateEntry($e)) {
                 throw new InvalidArgumentException("Email '{$user->getEmail()}' is already in use.");
             }
 

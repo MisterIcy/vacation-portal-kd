@@ -10,8 +10,10 @@ use App\Domains\Users\Repositories\UsersRepository;
 use App\Shared\Database;
 use App\Shared\PasswordHasherArgon2id;
 use InvalidArgumentException;
+use Exception;
 use PDOException;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 class UsersRepositoryTest extends TestCase
 {
@@ -81,7 +83,7 @@ class UsersRepositoryTest extends TestCase
         $user = new UserModel(null, 'test@example.com', 'password123', 'John Doe', '1234567', UserRole::Employee);
         $dbMock->expects($this->once())
             ->method('execute')
-            ->willThrowException(new PDOException('Duplicate', 23000));
+            ->willThrowException(self::duplicateEntryException());
         $repo->create($user);
     }
 
@@ -287,7 +289,50 @@ class UsersRepositoryTest extends TestCase
         $user = new UserModel(1, 'test@example.com', null, 'John Doe', '1234567', UserRole::Employee);
         $dbMock->expects($this->once())
             ->method('execute')
-            ->willThrowException(new PDOException('Duplicate', 23000));
+            ->willThrowException(self::duplicateEntryException());
         $repo->update($user);
+    }
+
+    public function testCreateDoesNotReportOtherIntegrityViolationsAsDuplicates(): void
+    {
+        // A foreign key failure shares SQLSTATE 23000 with a duplicate key but is a different problem.
+        $foreignKeyViolation = self::pdoException(
+            '23000',
+            1452,
+            'SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row'
+        );
+
+        $dbMock = $this->createMock(Database::class);
+        $repo = new UsersRepository($dbMock, new PasswordHasherArgon2id());
+        $user = new UserModel(null, 'test@example.com', 'password123', 'John Doe', '1234567', UserRole::Employee);
+        $dbMock->expects($this->once())
+            ->method('execute')
+            ->willThrowException($foreignKeyViolation);
+
+        $this->expectExceptionObject($foreignKeyViolation);
+
+        $repo->create($user);
+    }
+
+    /**
+     * Builds an exception shaped like the ones PDO really throws: the code is the
+     * SQLSTATE *string* and the driver's own error number is in errorInfo[1].
+     */
+    private static function pdoException(string $sqlState, int $driverCode, string $message): PDOException
+    {
+        $exception = new PDOException($message);
+        (new ReflectionProperty(Exception::class, 'code'))->setValue($exception, $sqlState);
+        $exception->errorInfo = [$sqlState, $driverCode, $message];
+
+        return $exception;
+    }
+
+    private static function duplicateEntryException(): PDOException
+    {
+        return self::pdoException(
+            '23000',
+            1062,
+            "SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'test@example.com' for key 'users.email'"
+        );
     }
 }
