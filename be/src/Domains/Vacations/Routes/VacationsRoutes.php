@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Routes;
 
 use App\Domains\Vacations\Controllers\VacationsController;
-use League\Route\Router;
+use League\Route\RouteCollectionInterface;
 
 readonly class VacationsRoutes
 {
-    public function __construct(private Router $router)
+    public function __construct(private RouteCollectionInterface $router)
     {
     }
 

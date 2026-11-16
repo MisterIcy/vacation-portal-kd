@@ -6,6 +6,7 @@ namespace App\Domains\Authentication\Controllers;
 
 use App\Domains\Authentication\Repositories\AuthenticationRepository;
 use App\Domains\Authentication\Requests\LoginRequest;
+use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Authentication\Services\AuthenticationService;
 use App\Shared\JsonErrorResponse;
 use App\Shared\Ports\PasswordHasher;
@@ -18,8 +19,12 @@ use JsonException;
 
 readonly class AuthenticationController
 {
-    public function __construct(private AuthenticationRepository $authenticationRepository, private AuthenticationService $authenticationService, private PasswordHasher $passwordHasher)
-    {
+    public function __construct(
+        private AuthenticationRepository $authenticationRepository,
+        private AuthenticationService $authenticationService,
+        private PasswordHasher $passwordHasher,
+        private AccessControlService $accessControl,
+    ) {
     }
 
     /**
@@ -96,13 +101,9 @@ readonly class AuthenticationController
      */
     public function renew(ServerRequestInterface $request): ResponseInterface
     {
-        $authHeader = $request->getHeaderLine('Authorization');
-        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
-            throw new InvalidArgumentException('Missing or invalid Authorization header');
-        }
-        $authHeader = trim(substr($authHeader, 7));
-
-        $authenticatedUser = $this->authenticationService->parseToken($authHeader);
+        // The middleware has already validated the token and loaded the person as they are now,
+        // so the new token carries their current name, email and role, not the old token's.
+        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
 
         return new JsonResponse([
             'token' => $this->authenticationService->createToken($authenticatedUser),

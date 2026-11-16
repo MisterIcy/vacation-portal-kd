@@ -6,8 +6,10 @@ namespace Tests\Unit\Domains\Authentication\Controllers;
 
 use App\Domains\Authentication\Controllers\AuthenticationController;
 use App\Domains\Authentication\Repositories\AuthenticationRepository;
+use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Authentication\Services\AuthenticationService;
 use App\Domains\Authentication\Models\AuthenticatedUserModel;
+use App\Domains\Users\Models\UserRole;
 use App\Shared\PasswordHasherArgon2id;
 use App\Shared\Ports\PasswordHasher;
 use Laminas\Diactoros\ServerRequest;
@@ -50,7 +52,7 @@ class AuthenticationControllerTest extends TestCase
         ], JSON_THROW_ON_ERROR));
         $request = new ServerRequest([], [], null, null, $body);
 
-        $controller = new AuthenticationController($repo, $authService, $passwordHasher);
+        $controller = new AuthenticationController($repo, $authService, $passwordHasher, $this->createMock(AccessControlService::class));
         $response = $controller->login($request);
 
         $this->assertInstanceOf(JsonResponse::class, $response);
@@ -76,7 +78,7 @@ class AuthenticationControllerTest extends TestCase
         ], JSON_THROW_ON_ERROR));
         $request = new ServerRequest([], [], null, null, $body);
 
-        $controller = new AuthenticationController($repo, $authService, $hasher);
+        $controller = new AuthenticationController($repo, $authService, $hasher, $this->createMock(AccessControlService::class));
         $response = $controller->login($request);
 
         $this->assertInstanceOf(JsonResponse::class, $response);
@@ -113,7 +115,7 @@ class AuthenticationControllerTest extends TestCase
         ], JSON_THROW_ON_ERROR));
         $request = new ServerRequest([], [], null, null, $body);
 
-        $controller = new AuthenticationController($repo, $authService, $hasher);
+        $controller = new AuthenticationController($repo, $authService, $hasher, $this->createMock(AccessControlService::class));
         $response = $controller->login($request);
 
         $this->assertInstanceOf(JsonResponse::class, $response);
@@ -143,7 +145,7 @@ class AuthenticationControllerTest extends TestCase
         ], JSON_THROW_ON_ERROR));
         $request = new ServerRequest([], [], null, null, $body);
 
-        $controller = new AuthenticationController($repo, $authService, $hasher);
+        $controller = new AuthenticationController($repo, $authService, $hasher, $this->createMock(AccessControlService::class));
         $response = $controller->login($request);
 
         $this->assertInstanceOf(JsonResponse::class, $response);
@@ -153,71 +155,37 @@ class AuthenticationControllerTest extends TestCase
         $this->assertSame('Invalid credentials', $data['reason_phrase']);
     }
 
-    public function testRenewSuccess(): void
+    public function testRenewIssuesATokenFromTheCurrentUserNotTheOldToken(): void
     {
-        $jwt = 'jwt.token';
-        $newToken = 'new.jwt.token';
-
-        $repo = $this->createMock(AuthenticationRepository::class);
-        $hasher = $this->createMock(PasswordHasher::class);
+        // The middleware loaded this person from the database: they were promoted since the old token was issued.
+        $current = new AuthenticatedUserModel(7, 'Jane', 'jane@example.com', UserRole::Manager);
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->expects($this->once())
-            ->method('getHeaderLine')
-            ->with('Authorization')
-            ->willReturn('Bearer ' . $jwt);
 
-        $user = $this->createMock(AuthenticatedUserModel::class);
+        $accessControl = $this->createMock(AccessControlService::class);
+        $accessControl->expects($this->once())
+            ->method('getAuthenticatedUserModelFromRequest')
+            ->with($request)
+            ->willReturn($current);
+
         $authService = $this->createMock(AuthenticationService::class);
-        $authService->expects($this->once())
-            ->method('parseToken')
-            ->with($jwt)
-            ->willReturn($user);
+        $authService->expects($this->never())->method('parseToken');
         $authService->expects($this->once())
             ->method('createToken')
-            ->with($user)
-            ->willReturn($newToken);
+            ->with($current)
+            ->willReturn('new.jwt.token');
 
-        $controller = new AuthenticationController($repo, $authService, $hasher);
+        $controller = new AuthenticationController(
+            $this->createMock(AuthenticationRepository::class),
+            $authService,
+            $this->createMock(PasswordHasher::class),
+            $accessControl
+        );
         $response = $controller->renew($request);
 
         $this->assertInstanceOf(JsonResponse::class, $response);
         $this->assertSame(200, $response->getStatusCode());
         /** @var array{token: string} $data */
-        $data = json_decode((string)$response->getBody(), true, JSON_THROW_ON_ERROR);
-        $this->assertSame($newToken, $data['token']);
-    }
-
-    public function testRenewThrowsOnMissingHeader(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        $repo = $this->createMock(AuthenticationRepository::class);
-        $authService = $this->createMock(AuthenticationService::class);
-        $hasher = $this->createMock(PasswordHasher::class);
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->expects($this->once())
-            ->method('getHeaderLine')
-            ->with('Authorization')
-            ->willReturn('');
-
-        $controller = new AuthenticationController($repo, $authService, $hasher);
-        $controller->renew($request);
-    }
-
-    public function testRenewThrowsOnInvalidHeader(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        $repo = $this->createMock(AuthenticationRepository::class);
-        $authService = $this->createMock(AuthenticationService::class);
-        $hasher = $this->createMock(PasswordHasher::class);
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->expects($this->once())
-            ->method('getHeaderLine')
-            ->with('Authorization')
-            ->willReturn('Token abc');
-
-        $controller = new AuthenticationController($repo, $authService, $hasher);
-        $controller->renew($request);
+        $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('new.jwt.token', $data['token']);
     }
 }

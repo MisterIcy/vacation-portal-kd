@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Authentication\Middleware\AuthenticationMiddleware;
 use App\Domains\Authentication\Services\AuthenticationService;
 use App\Shared\Clock;
 use App\Shared\ErrorHandlingMiddleware;
@@ -67,10 +68,16 @@ $container->add(League\Route\Router::class, function () use ($container) {
     $router = new League\Route\Router();
     $router->setStrategy($strategy); // Set the strategy here
 
-    // Add your routes here
-    new App\Domains\Authentication\Routes\AuthenticationRoutes($router)->register();
-    new App\Domains\Users\Routes\UsersRoutes($router)->register();
-    new App\Domains\Vacations\Routes\VacationsRoutes($router)->register();
+    // Identifies the caller (401 if it cannot) before an endpoint runs. Every route is behind it
+    // except logging in, which is how a caller gets a token.
+    $authentication = $container->get(AuthenticationMiddleware::class);
+
+    new App\Domains\Authentication\Routes\AuthenticationRoutes($router, $authentication)->register();
+
+    $router->group('', function (League\Route\RouteGroup $protected) {
+        new App\Domains\Users\Routes\UsersRoutes($protected)->register();
+        new App\Domains\Vacations\Routes\VacationsRoutes($protected)->register();
+    })->middleware($authentication);
 
     return $router;
 });
