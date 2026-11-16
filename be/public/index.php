@@ -11,6 +11,9 @@ use League\Route\Strategy\JsonStrategy;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// All instants are handled as UTC (see App\Shared\DateTimes), independent of server settings.
+date_default_timezone_set('UTC');
+
 // Load environment variables
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
 $dotenv->load();

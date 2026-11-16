@@ -8,10 +8,10 @@ use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
 use App\Shared\Database;
 use App\Shared\DatabaseErrors;
+use App\Shared\DateTimes;
 use App\Shared\ModelCollection;
 use App\Shared\Ports\PasswordHasher;
 use DateMalformedStringException;
-use DateTime;
 use InvalidArgumentException;
 use PDOException;
 
@@ -55,8 +55,8 @@ readonly class UsersRepository
             ['id' => $id]
         )[0];
 
-        $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? new DateTime($row['created_at']) : null;
-        $updatedAt = isset($row['updated_at']) && is_string($row['updated_at']) ? new DateTime($row['updated_at']) : null;
+        $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? DateTimes::fromDatabase($row['created_at']) : null;
+        $updatedAt = isset($row['updated_at']) && is_string($row['updated_at']) ? DateTimes::fromDatabase($row['updated_at']) : null;
 
         return new UserModel(
             $id,
@@ -165,8 +165,8 @@ readonly class UsersRepository
         $name = isset($data['name']) && is_string($data['name']) ? $data['name'] : '';
         $employeeCode = isset($data['employee_code']) && is_string($data['employee_code']) ? $data['employee_code'] : '';
         $role = isset($data['role']) && is_string($data['role']) ? UserRole::from($data['role']) : UserRole::Employee;
-        $createdAt = isset($data['created_at']) && is_string($data['created_at']) ? new DateTime($data['created_at']) : null;
-        $updatedAt = isset($data['updated_at']) && is_string($data['updated_at']) ? new DateTime($data['updated_at']) : null;
+        $createdAt = isset($data['created_at']) && is_string($data['created_at']) ? DateTimes::fromDatabase($data['created_at']) : null;
+        $updatedAt = isset($data['updated_at']) && is_string($data['updated_at']) ? DateTimes::fromDatabase($data['updated_at']) : null;
 
         return new UserModel(
             $id,

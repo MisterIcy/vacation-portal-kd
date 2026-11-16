@@ -9,9 +9,9 @@ use App\Domains\Users\Repositories\UsersRepository;
 use App\Domains\Vacations\Models\VacationModel;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Shared\Database;
+use App\Shared\DateTimes;
 use App\Shared\ModelCollection;
 use DateMalformedStringException;
-use DateTime;
 use InvalidArgumentException;
 
 readonly class VacationsRepository
@@ -127,8 +127,8 @@ readonly class VacationsRepository
             ['id' => $id]
         )[0];
 
-        $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? new DateTime($row['created_at']) : null;
-        $updatedAt = isset($row['updated_at']) && is_string($row['updated_at']) ? new DateTime($row['updated_at']) : null;
+        $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? DateTimes::fromDatabase($row['created_at']) : null;
+        $updatedAt = isset($row['updated_at']) && is_string($row['updated_at']) ? DateTimes::fromDatabase($row['updated_at']) : null;
 
         return new VacationModel(
             $id,
@@ -162,13 +162,13 @@ readonly class VacationsRepository
     {
         $id = (isset($data['id']) && is_scalar($data['id'])) ? intval($data['id']) : null;
         $userId = (isset($data['user_id']) && is_scalar($data['user_id'])) ? intval($data['user_id']) : null;
-        $from = isset($data['from']) && is_string($data['from']) ? new DateTime($data['from']) : null;
-        $to = isset($data['to']) && is_string($data['to']) ? new DateTime($data['to']) : null;
+        $from = isset($data['from']) && is_string($data['from']) ? DateTimes::fromDatabase($data['from']) : null;
+        $to = isset($data['to']) && is_string($data['to']) ? DateTimes::fromDatabase($data['to']) : null;
         $reason = isset($data['reason']) && is_string($data['reason']) ? $data['reason'] : '';
         $status = isset($data['status']) && is_string($data['status']) ? VacationStatus::from($data['status']) : VacationStatus::Pending;
         $authorizedBy = (isset($data['authorized_by']) && is_scalar($data['authorized_by'])) ? intval($data['authorized_by']) : null;
-        $createdAt = isset($data['created_at']) && is_string($data['created_at']) ? new DateTime($data['created_at']) : null;
-        $updatedAt = isset($data['updated_at']) && is_string($data['updated_at']) ? new DateTime($data['updated_at']) : null;
+        $createdAt = isset($data['created_at']) && is_string($data['created_at']) ? DateTimes::fromDatabase($data['created_at']) : null;
+        $updatedAt = isset($data['updated_at']) && is_string($data['updated_at']) ? DateTimes::fromDatabase($data['updated_at']) : null;
 
         assert(!is_null($userId));
         assert(!is_null($from));
