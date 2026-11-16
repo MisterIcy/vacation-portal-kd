@@ -151,6 +151,16 @@ with the git commit, and promoted from staging to production after approval.
 | Add the first manager | The seed creates the initial manager. Further managers are created by an existing manager through the user form. |
 | API errors | Check the health endpoint, the application logs and the database connection, in that order. |
 
+**Database users:** the application and the migrations should not share one
+account. The migrations need to change the schema; the application only needs
+to read and write rows, so that a flaw such as a SQL injection could not drop
+or alter tables. Migrations therefore use `DB_MIGRATION_USERNAME` and
+`DB_MIGRATION_PASSWORD` when they are set, and fall back to `DB_USERNAME` and
+`DB_PASSWORD` when they are not, so the setup described above keeps working
+unchanged. In production, create two users: one with schema privileges for the
+migration step of the deployment, and one with only `SELECT`, `INSERT`,
+`UPDATE` and `DELETE` on the application's schema for the running service.
+
 **Observability:** logs written to standard output, an uptime check on a health
 endpoint, an alert on the rate of 5xx responses, and daily database backups
 with point-in-time recovery.

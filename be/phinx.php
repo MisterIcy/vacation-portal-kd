@@ -19,8 +19,10 @@ return
                 'adapter' => 'mysql',
                 'host' => $_ENV['DB_HOST'],
                 'name' => $_ENV['DB_DATABASE'],
-                'user' => $_ENV['DB_USERNAME'],
-                'pass' => $_ENV['DB_PASSWORD'],
+                // Migrations change the schema, which the application itself should not be allowed to do.
+                // Use dedicated credentials when they are configured; otherwise the application's.
+                'user' => $_ENV['DB_MIGRATION_USERNAME'] ?? $_ENV['DB_USERNAME'],
+                'pass' => $_ENV['DB_MIGRATION_PASSWORD'] ?? $_ENV['DB_PASSWORD'],
                 'port' => $_ENV['DB_PORT'],
                 'charset' => $_ENV['DB_CHARSET'],
             ]
