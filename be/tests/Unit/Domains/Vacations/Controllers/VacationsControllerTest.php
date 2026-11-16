@@ -7,6 +7,7 @@ namespace Tests\Unit\Domains\Vacations\Controllers;
 use App\Domains\Authentication\Models\AuthenticatedUserModel;
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Controllers\VacationsController;
+use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
@@ -15,6 +16,7 @@ use App\Shared\ModelCollection;
 use DateInterval;
 use DateMalformedStringException;
 use DateTime;
+use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\ServerRequest;
 use Laminas\Diactoros\Response\JsonResponse;
@@ -125,12 +127,13 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $pendingVacation = $this->createMock(VacationRequest::class);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $updatedVacation = $this->createMock(VacationRequest::class);
+        $pendingVacation = $this->vacation(VacationStatus::Pending);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(5)->willReturn($pendingVacation);
-        $vacationsRepository->method('updateStatus')->with(5, 1, VacationStatus::Approved)->willReturn($updatedVacation);
+        $vacationsRepository->expects($this->once())
+            ->method('updateStatus')
+            ->with(5, 1, VacationStatus::Approved)
+            ->willReturn($pendingVacation->approve(1));
 
         $controller = new VacationsController($vacationsRepository, $accessControl);
         $response = $controller->approve($this->createMock(ServerRequest::class), ['id' => 5]);
@@ -145,12 +148,13 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $pendingVacation = $this->createMock(VacationRequest::class);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $updatedVacation = $this->createMock(VacationRequest::class);
+        $pendingVacation = $this->vacation(VacationStatus::Pending);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(5)->willReturn($pendingVacation);
-        $vacationsRepository->method('updateStatus')->with(5, 1, VacationStatus::Rejected)->willReturn($updatedVacation);
+        $vacationsRepository->expects($this->once())
+            ->method('updateStatus')
+            ->with(5, 1, VacationStatus::Rejected)
+            ->willReturn($pendingVacation->reject(1));
 
         $controller = new VacationsController($vacationsRepository, $accessControl);
         $response = $controller->reject($this->createMock(ServerRequest::class), ['id' => 5]);
@@ -165,9 +169,7 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $pendingVacation = $this->createMock(VacationRequest::class);
-        $pendingVacation->method('getUserId')->willReturn(1);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
+        $pendingVacation = $this->vacation(VacationStatus::Pending, ownerId: 1);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(7)->willReturn($pendingVacation);
         $vacationsRepository->expects($this->once())
@@ -187,16 +189,16 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $pendingVacation = $this->createMock(VacationRequest::class);
-        $pendingVacation->method('getUserId')->willReturn(99);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
+        $someoneElsesVacation = $this->vacation(VacationStatus::Pending, ownerId: 99);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(8)->willReturn($pendingVacation);
+        $vacationsRepository->method('findById')->with(8)->willReturn($someoneElsesVacation);
+        $vacationsRepository->expects($this->never())->method('delete');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Vacation with ID 5 not found.');
 
         $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->delete($this->createMock(ServerRequest::class), ['id' => 8]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(400, $response->getStatusCode());
+        $controller->delete($this->createMock(ServerRequest::class), ['id' => 8]);
     }
 
     /**
@@ -206,16 +208,16 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $approvedVacation = $this->createMock(VacationRequest::class);
-        $approvedVacation->method('getUserId')->willReturn(1);
-        $approvedVacation->method('getStatus')->willReturn(VacationStatus::Approved);
+        $approvedVacation = $this->vacation(VacationStatus::Approved, ownerId: 1);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(9)->willReturn($approvedVacation);
+        $vacationsRepository->expects($this->never())->method('delete');
+
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be deleted.');
 
         $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->delete($this->createMock(ServerRequest::class), ['id' => 9]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(400, $response->getStatusCode());
+        $controller->delete($this->createMock(ServerRequest::class), ['id' => 9]);
     }
 
     /**
@@ -253,15 +255,16 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $approvedVacation = $this->createMock(VacationRequest::class);
-        $approvedVacation->method('getStatus')->willReturn(VacationStatus::Approved);
+        $approvedVacation = $this->vacation(VacationStatus::Approved);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(10)->willReturn($approvedVacation);
+        $vacationsRepository->expects($this->never())->method('updateStatus');
+
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be updated.');
 
         $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->approve($this->createMock(ServerRequest::class), ['id' => 10]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(400, $response->getStatusCode());
+        $controller->approve($this->createMock(ServerRequest::class), ['id' => 10]);
     }
 
     /**
@@ -294,16 +297,15 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $rejectedVacation = $this->createMock(VacationRequest::class);
-        $rejectedVacation->method('getStatus')->willReturn(VacationStatus::Rejected);
+        $rejectedVacation = $this->vacation(VacationStatus::Rejected);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(10)->willReturn($rejectedVacation);
         $vacationsRepository->expects($this->never())->method('updateStatus');
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->reject($this->createMock(ServerRequest::class), ['id' => 10]);
+        $this->expectException(VacationNotPending::class);
 
-        $this->assertSame(400, $response->getStatusCode());
+        $controller = new VacationsController($vacationsRepository, $accessControl);
+        $controller->reject($this->createMock(ServerRequest::class), ['id' => 10]);
     }
 
     public function testManagerCannotDeleteVacationRequests(): void
@@ -316,6 +318,20 @@ class VacationsControllerTest extends TestCase
 
         $controller = new VacationsController($vacationsRepository, $accessControl);
         $controller->delete($this->createMock(ServerRequest::class), ['id' => 10]);
+    }
+
+    private function vacation(VacationStatus $status, int $ownerId = 1): VacationRequest
+    {
+        return new VacationRequest(
+            5,
+            $ownerId,
+            null,
+            new DateTime('2026-07-01'),
+            new DateTime('2026-07-05'),
+            'Summer holiday',
+            $status,
+            $status === VacationStatus::Pending ? null : 2,
+        );
     }
 
     private function getMockAccessControlService(UserRole $role): AccessControlService

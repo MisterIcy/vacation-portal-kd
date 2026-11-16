@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Models;
 
 use App\Domains\Users\Models\UserModel;
+use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Shared\DateTimes;
 use DateMalformedStringException;
 use DateTime;
@@ -107,6 +108,71 @@ readonly class VacationRequest implements JsonSerializable
     public function getUpdatedAt(): ?DateTime
     {
         return $this->updatedAt;
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === VacationStatus::Pending;
+    }
+
+    /**
+     * A manager's decision. Only a pending request can be decided, and only once.
+     *
+     * @throws VacationNotPending
+     */
+    public function approve(int $managerId): self
+    {
+        return $this->decide(VacationStatus::Approved, $managerId);
+    }
+
+    /**
+     * @throws VacationNotPending
+     */
+    public function reject(int $managerId): self
+    {
+        return $this->decide(VacationStatus::Rejected, $managerId);
+    }
+
+    /**
+     * Withdrawing a request is allowed for its owner while it is still pending.
+     * Someone else gets the same answer as for a request that does not exist, so
+     * they cannot find out which ids are in use.
+     *
+     * @throws InvalidArgumentException when the requester is not the owner
+     * @throws VacationNotPending
+     */
+    public function cancel(int $requesterId): void
+    {
+        if ($requesterId !== $this->userId) {
+            throw new InvalidArgumentException("Vacation with ID {$this->id} not found.");
+        }
+
+        if (!$this->isPending()) {
+            throw VacationNotPending::forDeletion();
+        }
+    }
+
+    /**
+     * @throws VacationNotPending
+     */
+    private function decide(VacationStatus $decision, int $managerId): self
+    {
+        if (!$this->isPending()) {
+            throw VacationNotPending::forUpdate();
+        }
+
+        return new self(
+            $this->id,
+            $this->userId,
+            $this->user,
+            $this->getFrom(),
+            $this->getTo(),
+            $this->reason,
+            $decision,
+            $managerId,
+            $this->createdAt,
+            $this->updatedAt,
+        );
     }
 
     /**

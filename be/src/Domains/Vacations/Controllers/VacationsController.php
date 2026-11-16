@@ -9,7 +9,7 @@ use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Domains\Vacations\Requests\CreateVacationRequest;
-use App\Shared\JsonErrorResponse;
+use Closure;
 use DateMalformedStringException;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
@@ -46,7 +46,7 @@ readonly class VacationsController
      */
     public function approve(ServerRequestInterface $request, array $params): ResponseInterface
     {
-        return $this->updateStatus($request, $params, VacationStatus::Approved);
+        return $this->decide($request, $params, fn (VacationRequest $vacation, int $managerId) => $vacation->approve($managerId));
     }
 
     /**
@@ -55,7 +55,7 @@ readonly class VacationsController
      */
     public function reject(ServerRequestInterface $request, array $params): ResponseInterface
     {
-        return $this->updateStatus($request, $params, VacationStatus::Rejected);
+        return $this->decide($request, $params, fn (VacationRequest $vacation, int $managerId) => $vacation->reject($managerId));
     }
 
     /**
@@ -93,15 +93,8 @@ readonly class VacationsController
         $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
         $vacationId = (int) $params['id'];
 
-        $vacationModel = $this->vacationsRepository->findById($vacationId);
-
-        if ($authenticatedUser->getId() !== $vacationModel->getUserId()) {
-            return new JsonErrorResponse(400, 'Vacation with ID '.$params['id'].' not found.');
-        }
-
-        if ($vacationModel->getStatus() != VacationStatus::Pending) {
-            return new JsonErrorResponse(400, 'Only pending vacations can be deleted.');
-        }
+        // Who may cancel, and when, is decided by the vacation request itself.
+        $this->vacationsRepository->findById($vacationId)->cancel($authenticatedUser->getId());
 
         $this->vacationsRepository->delete($vacationId);
 
@@ -110,23 +103,22 @@ readonly class VacationsController
 
     /**
      * @param array{id: int} $params
+     * @param Closure(VacationRequest, int): VacationRequest $decision applies the manager's decision to the request
      * @throws ForbiddenException|DateMalformedStringException
      */
-    private function updateStatus(ServerRequestInterface $request, array $params, VacationStatus $status): ResponseInterface
+    private function decide(ServerRequestInterface $request, array $params, Closure $decision): ResponseInterface
     {
         $this->requireManager($request);
-        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
+        $managerId = $this->accessControl->getAuthenticatedUserModelFromRequest($request)->getId();
         $vacationId = (int) $params['id'];
 
-        $vacationModel = $this->vacationsRepository->findById($vacationId);
+        // The vacation request enforces that it is still pending; the conditional UPDATE in the
+        // repository is what keeps two managers deciding at the same moment from both winning.
+        $decided = $decision($this->vacationsRepository->findById($vacationId), $managerId);
 
-        if ($vacationModel->getStatus() != VacationStatus::Pending) {
-            return new JsonErrorResponse(400, 'Only pending vacations can be updated.');
-        }
+        $saved = $this->vacationsRepository->updateStatus($vacationId, $managerId, $decided->getStatus());
 
-        $vacationModel = $this->vacationsRepository->updateStatus($vacationId, $authenticatedUser->getId(), $status);
-
-        return new JsonResponse($vacationModel, 200);
+        return new JsonResponse($saved, 200);
     }
 
     /**

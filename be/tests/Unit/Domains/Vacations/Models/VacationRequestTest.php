@@ -6,6 +6,7 @@ namespace Tests\Unit\Domains\Vacations\Models;
 
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
+use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
@@ -149,5 +150,110 @@ class VacationRequestTest extends TestCase
             'across a leap day' => ['2028-02-28', '2028-03-01', 3],
             'the longest allowed range' => ['2026-01-01', '2026-03-01', 60],
         ];
+    }
+
+    public function testAManagerCanApproveAPendingRequest(): void
+    {
+        $pending = $this->requestWith(VacationStatus::Pending);
+
+        $approved = $pending->approve(7);
+
+        $this->assertSame(VacationStatus::Approved, $approved->getStatus());
+        $this->assertSame(7, $approved->getAuthorizedBy());
+        $this->assertSame($pending->getId(), $approved->getId());
+        $this->assertSame($pending->getReason(), $approved->getReason());
+        $this->assertSame($pending->getDays(), $approved->getDays());
+    }
+
+    public function testAManagerCanRejectAPendingRequest(): void
+    {
+        $rejected = $this->requestWith(VacationStatus::Pending)->reject(7);
+
+        $this->assertSame(VacationStatus::Rejected, $rejected->getStatus());
+        $this->assertSame(7, $rejected->getAuthorizedBy());
+    }
+
+    public function testDecidingDoesNotChangeTheOriginalRequest(): void
+    {
+        $pending = $this->requestWith(VacationStatus::Pending);
+
+        $pending->approve(7);
+
+        $this->assertSame(VacationStatus::Pending, $pending->getStatus());
+        $this->assertNull($pending->getAuthorizedBy());
+    }
+
+    #[DataProvider('decidedStatuses')]
+    public function testADecidedRequestCannotBeDecidedAgain(VacationStatus $status): void
+    {
+        $decided = $this->requestWith($status);
+
+        foreach (['approve', 'reject'] as $decision) {
+            try {
+                $decided->$decision(7);
+                $this->fail("A $status->value request must not be able to $decision");
+            } catch (VacationNotPending $e) {
+                $this->assertSame('Only pending vacations can be updated.', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * @return array<string, array{VacationStatus}>
+     */
+    public static function decidedStatuses(): array
+    {
+        return ['approved' => [VacationStatus::Approved], 'rejected' => [VacationStatus::Rejected]];
+    }
+
+    public function testTheOwnerCanCancelAPendingRequest(): void
+    {
+        $this->requestWith(VacationStatus::Pending, ownerId: 2)->cancel(2);
+
+        $this->addToAssertionCount(1); // cancelling a valid request throws nothing
+    }
+
+    public function testSomeoneElseCannotCancelARequestAndIsNotToldItExists(): void
+    {
+        $request = $this->requestWith(VacationStatus::Pending, ownerId: 2);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Vacation with ID 10 not found.');
+
+        $request->cancel(99);
+    }
+
+    #[DataProvider('decidedStatuses')]
+    public function testADecidedRequestCannotBeCancelled(VacationStatus $status): void
+    {
+        $request = $this->requestWith($status, ownerId: 2);
+
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be deleted.');
+
+        $request->cancel(2);
+    }
+
+    public function testOwnershipIsCheckedBeforeStatusSoOthersLearnNothing(): void
+    {
+        $approved = $this->requestWith(VacationStatus::Approved, ownerId: 2);
+
+        $this->expectExceptionMessage('Vacation with ID 10 not found.');
+
+        $approved->cancel(99);
+    }
+
+    private function requestWith(VacationStatus $status, int $ownerId = 2): VacationRequest
+    {
+        return new VacationRequest(
+            10,
+            $ownerId,
+            null,
+            new DateTime('2026-07-01'),
+            new DateTime('2026-07-05'),
+            'Summer holiday',
+            $status,
+            $status === VacationStatus::Pending ? null : 1,
+        );
     }
 }
