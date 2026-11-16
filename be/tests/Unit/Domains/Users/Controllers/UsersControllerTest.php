@@ -304,6 +304,39 @@ class UsersControllerTest extends TestCase
         new UsersController($usersRepository, $accessControlService)->delete($serverRequest, ['id' => 1]);
     }
 
+    /**
+     * Every users endpoint is manager-only: a non-manager is refused before the
+     * repository is touched.
+     *
+     * @param callable(UsersController, ServerRequest): mixed $action
+     */
+    #[DataProvider('managerOnlyActions')]
+    public function testEveryEndpointRejectsNonManagers(callable $action): void
+    {
+        $accessControlService = $this->createMock(AccessControlService::class);
+        $accessControlService->method('isManagerFromRequest')->willReturn(false);
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->expects($this->never())->method($this->anything());
+
+        $this->expectException(ForbiddenException::class);
+
+        $action(new UsersController($usersRepository, $accessControlService), $this->createMock(ServerRequest::class));
+    }
+
+    /**
+     * @return array<string, array{callable(UsersController, ServerRequest): mixed}>
+     */
+    public static function managerOnlyActions(): array
+    {
+        return [
+            'create' => [fn (UsersController $c, ServerRequest $r) => $c->create($r)],
+            'list' => [fn (UsersController $c, ServerRequest $r) => $c->list($r)],
+            'get' => [fn (UsersController $c, ServerRequest $r) => $c->get($r, ['id' => 2])],
+            'update' => [fn (UsersController $c, ServerRequest $r) => $c->update($r, ['id' => 2])],
+            'delete' => [fn (UsersController $c, ServerRequest $r) => $c->delete($r, ['id' => 2])],
+        ];
+    }
+
     private function getMockAccessControlService(): AccessControlService
     {
         $authenticatedUser = new AuthenticatedUserModel(

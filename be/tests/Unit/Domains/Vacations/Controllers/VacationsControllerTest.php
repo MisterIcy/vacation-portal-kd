@@ -278,6 +278,46 @@ class VacationsControllerTest extends TestCase
         $controller->approve($this->createMock(ServerRequest::class), ['id' => 10]);
     }
 
+    public function testRejectForbidden(): void
+    {
+        $this->expectException(ForbiddenException::class);
+
+        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
+        $vacationsRepository = $this->createMock(VacationsRepository::class);
+        $vacationsRepository->expects($this->never())->method('updateStatus');
+
+        $controller = new VacationsController($vacationsRepository, $accessControl);
+        $controller->reject($this->createMock(ServerRequest::class), ['id' => 10]);
+    }
+
+    public function testRejectNonPending(): void
+    {
+        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
+
+        $rejectedVacation = $this->createMock(VacationModel::class);
+        $rejectedVacation->method('getStatus')->willReturn(VacationStatus::Rejected);
+        $vacationsRepository = $this->createMock(VacationsRepository::class);
+        $vacationsRepository->method('findById')->with(10)->willReturn($rejectedVacation);
+        $vacationsRepository->expects($this->never())->method('updateStatus');
+
+        $controller = new VacationsController($vacationsRepository, $accessControl);
+        $response = $controller->reject($this->createMock(ServerRequest::class), ['id' => 10]);
+
+        $this->assertSame(400, $response->getStatusCode());
+    }
+
+    public function testManagerCannotDeleteVacationRequests(): void
+    {
+        $this->expectException(ForbiddenException::class);
+
+        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
+        $vacationsRepository = $this->createMock(VacationsRepository::class);
+        $vacationsRepository->expects($this->never())->method('delete');
+
+        $controller = new VacationsController($vacationsRepository, $accessControl);
+        $controller->delete($this->createMock(ServerRequest::class), ['id' => 10]);
+    }
+
     private function getMockAccessControlService(UserRole $role): AccessControlService
     {
         $authenticatedUser = new AuthenticatedUserModel(
