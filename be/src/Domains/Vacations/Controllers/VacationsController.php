@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Controllers;
 
 use App\Domains\Authentication\Services\AccessControlService;
-use App\Domains\Vacations\Models\VacationModel;
+use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Domains\Vacations\Requests\CreateVacationRequest;
@@ -68,7 +68,7 @@ readonly class VacationsController
 
         $input = CreateVacationRequest::fromRequest($request);
 
-        $vacationModel = new VacationModel(
+        $vacationModel = new VacationRequest(
             null,
             $authenticatedUser->getId(),
             null,

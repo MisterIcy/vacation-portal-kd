@@ -6,7 +6,7 @@ namespace App\Domains\Vacations\Repositories;
 
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Repositories\UsersRepository;
-use App\Domains\Vacations\Models\VacationModel;
+use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Shared\Database;
 use App\Shared\DateTimes;
@@ -41,7 +41,7 @@ readonly class VacationsRepository
                 'employee_code' => $data['employee_code'],
                 'role' => $data['employee_role'],
             ]);
-            $vacation = self::mapToVacationModel($data, $user);
+            $vacation = self::mapToVacationRequest($data, $user);
             $vacations->add($vacation);
         }
 
@@ -60,7 +60,7 @@ readonly class VacationsRepository
         $vacations = new ModelCollection();
 
         foreach ($rows as $data) {
-            $vacation = self::mapToVacationModel($data);
+            $vacation = self::mapToVacationRequest($data);
             $vacations->add($vacation);
         }
 
@@ -70,7 +70,7 @@ readonly class VacationsRepository
     /**
      * @throws DateMalformedStringException
      */
-    public function findById(int $id): VacationModel
+    public function findById(int $id): VacationRequest
     {
         $sql = "SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE id = :id";
 
@@ -80,13 +80,13 @@ readonly class VacationsRepository
             throw new InvalidArgumentException("Vacation with ID $id not found.");
         }
 
-        return $this->mapToVacationModel($row[0]);
+        return $this->mapToVacationRequest($row[0]);
     }
 
     /**
      * @throws DateMalformedStringException
      */
-    public function updateStatus(int $id, int $managerId, VacationStatus $status): VacationModel
+    public function updateStatus(int $id, int $managerId, VacationStatus $status): VacationRequest
     {
         $sql = "UPDATE vacations SET status = :status, authorized_by = :authorized_by WHERE id = :id AND status = :old_status";
         $rowCount = $this->db->execute($sql, [
@@ -106,7 +106,7 @@ readonly class VacationsRepository
     /**
      * @throws DateMalformedStringException
      */
-    public function create(VacationModel $vacationModel): VacationModel
+    public function create(VacationRequest $vacationModel): VacationRequest
     {
         $sql = "INSERT INTO vacations (user_id, `from`, `to`, reason, status)
                 VALUES (:user_id, :from, :to, :reason, :status)";
@@ -130,7 +130,7 @@ readonly class VacationsRepository
         $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? DateTimes::fromDatabase($row['created_at']) : null;
         $updatedAt = isset($row['updated_at']) && is_string($row['updated_at']) ? DateTimes::fromDatabase($row['updated_at']) : null;
 
-        return new VacationModel(
+        return new VacationRequest(
             $id,
             $vacationModel->getUserId(),
             $vacationModel->getUser(),
@@ -158,7 +158,7 @@ readonly class VacationsRepository
      * @param array<string, mixed> $data
      * @throws DateMalformedStringException
      */
-    public static function mapToVacationModel(array $data, ?UserModel $user = null): VacationModel
+    public static function mapToVacationRequest(array $data, ?UserModel $user = null): VacationRequest
     {
         $id = (isset($data['id']) && is_scalar($data['id'])) ? intval($data['id']) : null;
         $userId = (isset($data['user_id']) && is_scalar($data['user_id'])) ? intval($data['user_id']) : null;
@@ -174,7 +174,7 @@ readonly class VacationsRepository
         assert(!is_null($from));
         assert(!is_null($to));
 
-        return new VacationModel(
+        return new VacationRequest(
             $id,
             $userId,
             $user,

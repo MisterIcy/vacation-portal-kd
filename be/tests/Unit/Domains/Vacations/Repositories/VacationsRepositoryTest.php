@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Vacations\Repositories;
 
-use App\Domains\Vacations\Models\VacationModel;
+use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Shared\Database;
@@ -31,7 +31,7 @@ class VacationsRepositoryTest extends TestCase
 
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
-        $vacation = new VacationModel(
+        $vacation = new VacationRequest(
             null,
             $expectedUserId,
             null,

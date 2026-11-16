@@ -7,7 +7,7 @@ namespace Tests\Unit\Domains\Vacations\Controllers;
 use App\Domains\Authentication\Models\AuthenticatedUserModel;
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Controllers\VacationsController;
-use App\Domains\Vacations\Models\VacationModel;
+use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Domains\Users\Models\UserRole;
@@ -30,7 +30,7 @@ class VacationsControllerTest extends TestCase
     public function testListAsManager(): void
     {
         $collection = new ModelCollection();
-        $collection->add($this->createMock(VacationModel::class));
+        $collection->add($this->createMock(VacationRequest::class));
         $serverRequest = $this->createMock(ServerRequest::class);
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
@@ -50,7 +50,7 @@ class VacationsControllerTest extends TestCase
     public function testListAsEmployee(): void
     {
         $collection = new ModelCollection();
-        $collection->add($this->createMock(VacationModel::class));
+        $collection->add($this->createMock(VacationRequest::class));
         $serverRequest = $this->createMock(ServerRequest::class);
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
@@ -76,7 +76,7 @@ class VacationsControllerTest extends TestCase
 
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $expectedVacation = new VacationModel(
+        $expectedVacation = new VacationRequest(
             null,
             1,
             null,
@@ -92,7 +92,7 @@ class VacationsControllerTest extends TestCase
                 $expectedEndDate,
                 $expectedReason,
             ) {
-                return $param instanceof VacationModel
+                return $param instanceof VacationRequest
                     && $param->getUserId() === 1
                     && $param->getFrom()->format('Y-m-d') === $expectedStartDate->format('Y-m-d')
                     && $param->getTo()->format('Y-m-d') === $expectedEndDate->format('Y-m-d')
@@ -125,9 +125,9 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $pendingVacation = $this->createMock(VacationModel::class);
+        $pendingVacation = $this->createMock(VacationRequest::class);
         $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $updatedVacation = $this->createMock(VacationModel::class);
+        $updatedVacation = $this->createMock(VacationRequest::class);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(5)->willReturn($pendingVacation);
         $vacationsRepository->method('updateStatus')->with(5, 1, VacationStatus::Approved)->willReturn($updatedVacation);
@@ -145,9 +145,9 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $pendingVacation = $this->createMock(VacationModel::class);
+        $pendingVacation = $this->createMock(VacationRequest::class);
         $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $updatedVacation = $this->createMock(VacationModel::class);
+        $updatedVacation = $this->createMock(VacationRequest::class);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(5)->willReturn($pendingVacation);
         $vacationsRepository->method('updateStatus')->with(5, 1, VacationStatus::Rejected)->willReturn($updatedVacation);
@@ -165,7 +165,7 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $pendingVacation = $this->createMock(VacationModel::class);
+        $pendingVacation = $this->createMock(VacationRequest::class);
         $pendingVacation->method('getUserId')->willReturn(1);
         $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
@@ -187,7 +187,7 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $pendingVacation = $this->createMock(VacationModel::class);
+        $pendingVacation = $this->createMock(VacationRequest::class);
         $pendingVacation->method('getUserId')->willReturn(99);
         $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
@@ -206,7 +206,7 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Employee);
 
-        $approvedVacation = $this->createMock(VacationModel::class);
+        $approvedVacation = $this->createMock(VacationRequest::class);
         $approvedVacation->method('getUserId')->willReturn(1);
         $approvedVacation->method('getStatus')->willReturn(VacationStatus::Approved);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
@@ -253,7 +253,7 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $approvedVacation = $this->createMock(VacationModel::class);
+        $approvedVacation = $this->createMock(VacationRequest::class);
         $approvedVacation->method('getStatus')->willReturn(VacationStatus::Approved);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(10)->willReturn($approvedVacation);
@@ -294,7 +294,7 @@ class VacationsControllerTest extends TestCase
     {
         $accessControl = $this->getMockAccessControlService(UserRole::Manager);
 
-        $rejectedVacation = $this->createMock(VacationModel::class);
+        $rejectedVacation = $this->createMock(VacationRequest::class);
         $rejectedVacation->method('getStatus')->willReturn(VacationStatus::Rejected);
         $vacationsRepository = $this->createMock(VacationsRepository::class);
         $vacationsRepository->method('findById')->with(10)->willReturn($rejectedVacation);

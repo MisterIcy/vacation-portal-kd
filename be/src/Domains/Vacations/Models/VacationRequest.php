@@ -11,7 +11,7 @@ use DateTime;
 use InvalidArgumentException;
 use JsonSerializable;
 
-readonly class VacationModel implements JsonSerializable
+readonly class VacationRequest implements JsonSerializable
 {
     public const int MAX_VACATION_DAYS = 60;
     private ?int $id;

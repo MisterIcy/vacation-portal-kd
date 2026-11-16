@@ -6,7 +6,7 @@ namespace Tests\Unit\Domains\Vacations\Models;
 
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
-use App\Domains\Vacations\Models\VacationModel;
+use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use DateInterval;
 use DateTime;
@@ -14,14 +14,14 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-class VacationModelTest extends TestCase
+class VacationRequestTest extends TestCase
 {
     public function testValidConstructionMinimalFields(): void
     {
         $from = new DateTime()->add(new DateInterval('P1D'));
         $to = new DateTime()->add(new DateInterval('P2D'));
 
-        $model = new VacationModel(null, 1, null, $from, $to, 'Holiday');
+        $model = new VacationRequest(null, 1, null, $from, $to, 'Holiday');
 
         $this->assertNull($model->getId());
         $this->assertSame(1, $model->getUserId());
@@ -44,7 +44,7 @@ class VacationModelTest extends TestCase
         $createdAt = $today;
         $updatedAt = $today;
 
-        $model = new VacationModel(5, 2, $user, $from, $to, 'Trip', VacationStatus::Approved, 99, $createdAt, $updatedAt);
+        $model = new VacationRequest(5, 2, $user, $from, $to, 'Trip', VacationStatus::Approved, 99, $createdAt, $updatedAt);
 
         $this->assertSame(5, $model->getId());
         $this->assertSame(2, $model->getUserId());
@@ -65,7 +65,7 @@ class VacationModelTest extends TestCase
 
         $from = new DateTime()->add(new DateInterval('P1D'));
         $to = new DateTime()->add(new DateInterval('P2D'));
-        new VacationModel(null, 1, null, $from, $to, '   ');
+        new VacationRequest(null, 1, null, $from, $to, '   ');
     }
 
     public function testFromAfterToThrows(): void
@@ -75,7 +75,7 @@ class VacationModelTest extends TestCase
 
         $from = new DateTime()->add(new DateInterval('P2D'));
         $to = new DateTime()->add(new DateInterval('P1D'));
-        new VacationModel(null, 1, null, $from, $to, 'Trip');
+        new VacationRequest(null, 1, null, $from, $to, 'Trip');
     }
 
     public function testDurationExceedsMaxThrows(): void
@@ -84,8 +84,8 @@ class VacationModelTest extends TestCase
         $this->expectExceptionMessage('Vacation duration cannot be more than 60 days.');
 
         $from = new DateTime()->add(new DateInterval('P1D'));
-        $to = new DateTime()->add(new DateInterval('P'.(VacationModel::MAX_VACATION_DAYS + 2).'D'));
-        new VacationModel(null, 1, null, $from, $to, 'Trip');
+        $to = new DateTime()->add(new DateInterval('P'.(VacationRequest::MAX_VACATION_DAYS + 2).'D'));
+        new VacationRequest(null, 1, null, $from, $to, 'Trip');
     }
 
     public function testToArrayAndJsonSerialize(): void
@@ -97,7 +97,7 @@ class VacationModelTest extends TestCase
         $createdAt = $today;
         $updatedAt = $today;
 
-        $model = new VacationModel(5, 2, $user, $from, $to, 'Trip', VacationStatus::Approved, 99, $createdAt, $updatedAt);
+        $model = new VacationRequest(5, 2, $user, $from, $to, 'Trip', VacationStatus::Approved, 99, $createdAt, $updatedAt);
 
         $expected = [
             'id' => 5,
@@ -130,7 +130,7 @@ class VacationModelTest extends TestCase
     #[DataProvider('dayCounts')]
     public function testDaysCountsBothEndsInclusively(string $from, string $to, int $expectedDays): void
     {
-        $model = new VacationModel(null, 1, null, new DateTime($from), new DateTime($to), 'Trip');
+        $model = new VacationRequest(null, 1, null, new DateTime($from), new DateTime($to), 'Trip');
 
         $this->assertSame($expectedDays, $model->getDays());
         $this->assertSame($expectedDays, $model->toArray()['days']);
