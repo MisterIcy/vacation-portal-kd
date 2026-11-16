@@ -11,6 +11,7 @@ use App\Domains\Vacations\Models\VacationStatus;
 use DateInterval;
 use DateTime;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class VacationModelTest extends TestCase
@@ -112,13 +113,40 @@ class VacationModelTest extends TestCase
             ],
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
+            'days' => 2,
             'reason' => 'Trip',
             'status' => VacationStatus::Approved->value,
             'authorized_by' => 99,
-            'created_at' => $createdAt->format('Y-m-d H:i:s'),
-            'updated_at' => $updatedAt->format('Y-m-d H:i:s'),
+            'created_at' => $createdAt->format(DATE_ATOM),
+            'updated_at' => $updatedAt->format(DATE_ATOM),
         ];
         $this->assertSame($expected, $model->toArray());
         $this->assertSame($expected, $model->jsonSerialize());
+    }
+
+    /**
+     * "Total days" counts both the first and the last day.
+     */
+    #[DataProvider('dayCounts')]
+    public function testDaysCountsBothEndsInclusively(string $from, string $to, int $expectedDays): void
+    {
+        $model = new VacationModel(null, 1, null, new DateTime($from), new DateTime($to), 'Trip');
+
+        $this->assertSame($expectedDays, $model->getDays());
+        $this->assertSame($expectedDays, $model->toArray()['days']);
+    }
+
+    /**
+     * @return array<string, array{string, string, int}>
+     */
+    public static function dayCounts(): array
+    {
+        return [
+            'a single day' => ['2026-07-01', '2026-07-01', 1],
+            'two consecutive days' => ['2026-07-01', '2026-07-02', 2],
+            'across a month boundary' => ['2026-01-30', '2026-02-02', 4],
+            'across a leap day' => ['2028-02-28', '2028-03-01', 3],
+            'the longest allowed range' => ['2026-01-01', '2026-03-02', 61],
+        ];
     }
 }

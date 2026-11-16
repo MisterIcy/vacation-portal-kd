@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Models;
 
 use App\Domains\Users\Models\UserModel;
+use App\Shared\DateTimes;
 use DateMalformedStringException;
 use DateTime;
 use InvalidArgumentException;
@@ -115,6 +116,14 @@ readonly class VacationModel implements JsonSerializable
     }
 
     /**
+     * Total days of the vacation, counting both the first and the last day.
+     */
+    public function getDays(): int
+    {
+        return (int) $this->from->diff($this->to)->days + 1;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
@@ -125,11 +134,12 @@ readonly class VacationModel implements JsonSerializable
             'user' => $this->user?->toArray(),
             'from' => $this->from->format('Y-m-d'),
             'to' => $this->to->format('Y-m-d'),
+            'days' => $this->getDays(),
             'reason' => $this->reason,
             'status' => $this->status->value,
             'authorized_by' => $this->authorizedBy,
-            'created_at' => $this->createdAt?->format('Y-m-d H:i:s'),
-            'updated_at' => $this->updatedAt?->format('Y-m-d H:i:s'),
+            'created_at' => DateTimes::toIso($this->createdAt),
+            'updated_at' => DateTimes::toIso($this->updatedAt),
         ];
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Users\Models;
 
+use App\Shared\DateTimes;
 use DateTime;
 use InvalidArgumentException;
 use JsonSerializable;
@@ -146,8 +147,8 @@ readonly class UserModel implements JsonSerializable
             'name' => $this->name,
             'employee_code' => $this->employeeCode,
             'role' => $this->role->value,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
+            'created_at' => DateTimes::toIso($this->createdAt),
+            'updated_at' => DateTimes::toIso($this->updatedAt),
         ];
     }
 

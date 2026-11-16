@@ -7,6 +7,7 @@ namespace Tests\Unit\Domains\Users\Models;
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
 use DateTime;
+use DateTimeZone;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
@@ -73,5 +74,25 @@ class UserModelTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         new UserModel(1, 'test@example.com', 'password123', 'John Doe', '12345', UserRole::Employee);
+    }
+
+    public function testTimestampsAreSerializedAsIsoStringsWithOffset(): void
+    {
+        $createdAt = new DateTime('2026-01-15 10:00:00', new DateTimeZone('UTC'));
+        $updatedAt = new DateTime('2026-01-16 11:30:00', new DateTimeZone('UTC'));
+        $user = new UserModel(1, 'a@example.com', null, 'Ann', '1234567', UserRole::Employee, $createdAt, $updatedAt);
+
+        $data = $user->toArray();
+
+        $this->assertSame('2026-01-15T10:00:00+00:00', $data['created_at']);
+        $this->assertSame('2026-01-16T11:30:00+00:00', $data['updated_at']);
+    }
+
+    public function testMissingTimestampsAreNull(): void
+    {
+        $user = new UserModel(null, 'a@example.com', null, 'Ann', '1234567', UserRole::Employee);
+
+        $this->assertNull($user->toArray()['created_at']);
+        $this->assertNull($user->toArray()['updated_at']);
     }
 }
