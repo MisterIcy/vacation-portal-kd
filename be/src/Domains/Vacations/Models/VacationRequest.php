@@ -13,12 +13,10 @@ use JsonSerializable;
 
 readonly class VacationRequest implements JsonSerializable
 {
-    public const int MAX_VACATION_DAYS = 60;
     private ?int $id;
     private int $userId;
     private ?UserModel $user;
-    private DateTime $from;
-    private DateTime $to;
+    private DateRange $period;
     private string $reason;
     private VacationStatus $status;
     private ?int $authorizedBy;
@@ -44,20 +42,11 @@ readonly class VacationRequest implements JsonSerializable
             throw new InvalidArgumentException('Reason must not be empty.');
         }
 
-        if ($from > $to) {
-            throw new InvalidArgumentException('The "from" date must be earlier than the "to" date.');
-        }
-
-        $interval = $from->diff($to);
-        if ($interval->days > self::MAX_VACATION_DAYS) {
-            throw new InvalidArgumentException('Vacation duration cannot be more than 60 days.');
-        }
+        $this->period = new DateRange($from, $to);
 
         $this->id = $id;
         $this->userId = $userId;
         $this->user = $user;
-        $this->from = $from;
-        $this->to = $to;
         $this->reason = $reason;
         $this->status = $status;
         $this->authorizedBy = $authorizedBy;
@@ -80,14 +69,19 @@ readonly class VacationRequest implements JsonSerializable
         return $this->user;
     }
 
+    public function getPeriod(): DateRange
+    {
+        return $this->period;
+    }
+
     public function getFrom(): DateTime
     {
-        return $this->from;
+        return DateTime::createFromImmutable($this->period->from());
     }
 
     public function getTo(): DateTime
     {
-        return $this->to;
+        return DateTime::createFromImmutable($this->period->to());
     }
 
     public function getReason(): string
@@ -120,7 +114,7 @@ readonly class VacationRequest implements JsonSerializable
      */
     public function getDays(): int
     {
-        return (int) $this->from->diff($this->to)->days + 1;
+        return $this->period->days();
     }
 
     /**
@@ -132,8 +126,8 @@ readonly class VacationRequest implements JsonSerializable
             'id' => $this->id,
             'user_id' => $this->userId,
             'user' => $this->user?->toArray(),
-            'from' => $this->from->format('Y-m-d'),
-            'to' => $this->to->format('Y-m-d'),
+            'from' => $this->period->from()->format('Y-m-d'),
+            'to' => $this->period->to()->format('Y-m-d'),
             'days' => $this->getDays(),
             'reason' => $this->reason,
             'status' => $this->status->value,

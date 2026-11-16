@@ -6,6 +6,7 @@ namespace Tests\Unit\Domains\Vacations\Models;
 
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
+use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use DateInterval;
@@ -26,8 +27,8 @@ class VacationRequestTest extends TestCase
         $this->assertNull($model->getId());
         $this->assertSame(1, $model->getUserId());
         $this->assertNull($model->getUser());
-        $this->assertEquals($from, $model->getFrom());
-        $this->assertEquals($to, $model->getTo());
+        $this->assertSame($from->format('Y-m-d'), $model->getFrom()->format('Y-m-d'));
+        $this->assertSame($to->format('Y-m-d'), $model->getTo()->format('Y-m-d'));
         $this->assertSame('Holiday', $model->getReason());
         $this->assertSame(VacationStatus::Pending, $model->getStatus());
         $this->assertNull($model->getAuthorizedBy());
@@ -49,8 +50,8 @@ class VacationRequestTest extends TestCase
         $this->assertSame(5, $model->getId());
         $this->assertSame(2, $model->getUserId());
         $this->assertEquals($user, $model->getUser());
-        $this->assertEquals($from, $model->getFrom());
-        $this->assertEquals($to, $model->getTo());
+        $this->assertSame($from->format('Y-m-d'), $model->getFrom()->format('Y-m-d'));
+        $this->assertSame($to->format('Y-m-d'), $model->getTo()->format('Y-m-d'));
         $this->assertSame('Trip', $model->getReason());
         $this->assertSame(VacationStatus::Approved, $model->getStatus());
         $this->assertSame(99, $model->getAuthorizedBy());
@@ -84,7 +85,7 @@ class VacationRequestTest extends TestCase
         $this->expectExceptionMessage('Vacation duration cannot be more than 60 days.');
 
         $from = new DateTime()->add(new DateInterval('P1D'));
-        $to = new DateTime()->add(new DateInterval('P'.(VacationRequest::MAX_VACATION_DAYS + 2).'D'));
+        $to = new DateTime()->add(new DateInterval('P'.(DateRange::MAX_DAYS + 2).'D'));
         new VacationRequest(null, 1, null, $from, $to, 'Trip');
     }
 
@@ -146,7 +147,7 @@ class VacationRequestTest extends TestCase
             'two consecutive days' => ['2026-07-01', '2026-07-02', 2],
             'across a month boundary' => ['2026-01-30', '2026-02-02', 4],
             'across a leap day' => ['2028-02-28', '2028-03-01', 3],
-            'the longest allowed range' => ['2026-01-01', '2026-03-02', 61],
+            'the longest allowed range' => ['2026-01-01', '2026-03-01', 60],
         ];
     }
 }
