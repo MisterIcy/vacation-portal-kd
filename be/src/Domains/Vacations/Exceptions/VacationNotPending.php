@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace App\Domains\Vacations\Exceptions;
 
-use InvalidArgumentException;
+use App\Shared\Conflict;
 
 /**
- * A change was attempted on a vacation request that has already been decided.
- *
- * It extends InvalidArgumentException so it is reported to the client as a 400 until
- * the API distinguishes conflicts (409) from other invalid requests.
+ * A change was attempted on a vacation request that has already been decided (reported as 409).
  */
-final class VacationNotPending extends InvalidArgumentException
+final class VacationNotPending extends Conflict
 {
     public static function forUpdate(): self
     {

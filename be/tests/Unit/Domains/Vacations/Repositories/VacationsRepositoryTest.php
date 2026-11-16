@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Vacations\Repositories;
 
+use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Shared\Database;
+use App\Shared\NotFound;
 use DateMalformedStringException;
 use DateTime;
 use InvalidArgumentException;
@@ -146,7 +148,7 @@ class VacationsRepositoryTest extends TestCase
      */
     public function testFindByIdNotFound(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('Vacation with ID 1 not found.');
 
         $dbMock = $this->createMock(Database::class);
@@ -172,10 +174,11 @@ class VacationsRepositoryTest extends TestCase
         $repo->delete(1);
     }
 
-    public function testDeleteNotFound(): void
+    public function testDeleteOfARequestThatIsNoLongerPendingIsAConflict(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Vacation with ID 1 not found.');
+        // Nothing was deleted: the caller found it pending a moment ago, so it was decided meanwhile.
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be deleted.');
 
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
@@ -237,10 +240,11 @@ class VacationsRepositoryTest extends TestCase
     /**
      * @throws DateMalformedStringException
      */
-    public function testUpdateStatusNotFound(): void
+    public function testDecidingARequestThatWasDecidedMeanwhileIsAConflict(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Vacation with ID 1 not found.');
+        // Two managers deciding at the same moment: the conditional write matches no row for the second.
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be updated.');
 
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
@@ -384,7 +388,7 @@ class VacationsRepositoryTest extends TestCase
         $dbMock = $this->createMock(Database::class);
         $dbMock->method('query')->willReturn([]);
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('Employee with ID 7 not found.');
 
         (new VacationsRepository($dbMock))->lockEmployee(7);

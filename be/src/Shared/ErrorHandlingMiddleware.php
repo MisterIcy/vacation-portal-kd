@@ -23,6 +23,10 @@ class ErrorHandlingMiddleware implements MiddlewareInterface
             return new JsonErrorResponse(400, $e->getMessage());
         } catch (ForbiddenException|AccessDenied $e) {
             return new JsonErrorResponse(403, $e->getMessage());
+        } catch (NotFound $e) {
+            return new JsonErrorResponse(404, $e->getMessage());
+        } catch (Conflict $e) {
+            return new JsonErrorResponse(409, $e->getMessage());
         } catch (Throwable $e) {
             // The client only gets a generic message, so the cause has to be recorded here or it is lost.
             // It goes to the error log (stderr in the container), never into the response.

@@ -7,7 +7,9 @@ namespace Tests\Unit\Domains\Users\Repositories;
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
 use App\Domains\Users\Repositories\UsersRepository;
+use App\Shared\Conflict;
 use App\Shared\Database;
+use App\Shared\NotFound;
 use App\Shared\PasswordHasherArgon2id;
 use InvalidArgumentException;
 use Exception;
@@ -75,7 +77,7 @@ class UsersRepositoryTest extends TestCase
 
     public function testCreateUniqueConstraint(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(Conflict::class);
         $this->expectExceptionMessage("Email ('test@example.com') or Employee code ('1234567') is already in use.");
 
         $dbMock = $this->createMock(Database::class);
@@ -130,7 +132,7 @@ class UsersRepositoryTest extends TestCase
         $dbMock->expects($this->once())
             ->method('query')
             ->willReturn([]);
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('User with ID 1 not found.');
         $repo->findById(1);
     }
@@ -153,7 +155,7 @@ class UsersRepositoryTest extends TestCase
         $dbMock->expects($this->once())
             ->method('execute')
             ->willReturn(0);
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('User with ID 1 not found.');
         $repo->delete(1);
     }
@@ -281,7 +283,7 @@ class UsersRepositoryTest extends TestCase
 
     public function testUpdateUniqueConstraint(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(Conflict::class);
         $this->expectExceptionMessage("Email 'test@example.com' is already in use.");
 
         $dbMock = $this->createMock(Database::class);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Models;
 
 use App\Domains\Vacations\Exceptions\VacationNotPending;
+use App\Shared\NotFound;
 use App\Shared\DateTimes;
 use DateMalformedStringException;
 use DateTime;
@@ -138,13 +139,13 @@ readonly class VacationRequest implements JsonSerializable
      * Someone else gets the same answer as for a request that does not exist, so
      * they cannot find out which ids are in use.
      *
-     * @throws InvalidArgumentException when the requester is not the owner
+     * @throws NotFound when the requester is not the owner
      * @throws VacationNotPending
      */
     public function cancel(int $requesterId): void
     {
         if ($requesterId !== $this->userId) {
-            throw new InvalidArgumentException("Vacation with ID {$this->id} not found.");
+            throw new NotFound("Vacation with ID {$this->id} not found.");
         }
 
         if (!$this->isPending()) {

@@ -11,6 +11,7 @@ use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use DateInterval;
 use DateTime;
+use App\Shared\NotFound;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -214,7 +215,7 @@ class VacationRequestTest extends TestCase
     {
         $request = $this->requestWith(VacationStatus::Pending, ownerId: 2);
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('Vacation with ID 10 not found.');
 
         $request->cancel(99);

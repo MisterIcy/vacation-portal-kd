@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Vacations\Repositories;
 
+use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
@@ -12,6 +13,7 @@ use App\Shared\Database;
 use App\Shared\DatabaseErrors;
 use App\Shared\DateTimes;
 use App\Shared\ModelCollection;
+use App\Shared\NotFound;
 use DateMalformedStringException;
 use InvalidArgumentException;
 use PDOException;
@@ -76,7 +78,7 @@ readonly class VacationsRepository implements VacationRequestRepository
         $rows = $this->db->query('SELECT id FROM users WHERE id = :id FOR UPDATE', ['id' => $employeeId]);
 
         if ($rows === []) {
-            throw new InvalidArgumentException("Employee with ID $employeeId not found.");
+            throw new NotFound("Employee with ID $employeeId not found.");
         }
     }
 
@@ -111,7 +113,7 @@ readonly class VacationsRepository implements VacationRequestRepository
         $row = $this->db->query($sql, ['id' => $id]);
 
         if (empty($row)) {
-            throw new InvalidArgumentException("Vacation with ID $id not found.");
+            throw new NotFound("Vacation with ID $id not found.");
         }
 
         return $this->mapToVacationRequest($row[0]);
@@ -131,7 +133,9 @@ readonly class VacationsRepository implements VacationRequestRepository
         ]);
 
         if ($rowCount === 0) {
-            throw new InvalidArgumentException("Vacation with ID $id not found.");
+            // The caller has just loaded this request and found it pending, so someone else decided
+            // it first. This is what keeps two managers from both winning.
+            throw VacationNotPending::forUpdate();
         }
 
         return $this->findById($id);
@@ -192,7 +196,8 @@ readonly class VacationsRepository implements VacationRequestRepository
         $rowCount = $this->db->execute($sql, ['id' => $id, 'status' => VacationStatus::Pending->value]);
 
         if ($rowCount === 0) {
-            throw new InvalidArgumentException("Vacation with ID $id not found.");
+            // The caller has just loaded this request, so it exists: it was decided in the meantime.
+            throw VacationNotPending::forDeletion();
         }
     }
 

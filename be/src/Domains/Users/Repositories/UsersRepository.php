@@ -6,10 +6,12 @@ namespace App\Domains\Users\Repositories;
 
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
+use App\Shared\Conflict;
 use App\Shared\Database;
 use App\Shared\DatabaseErrors;
 use App\Shared\DateTimes;
 use App\Shared\ModelCollection;
+use App\Shared\NotFound;
 use App\Shared\Ports\PasswordHasher;
 use DateMalformedStringException;
 use InvalidArgumentException;
@@ -41,7 +43,7 @@ readonly class UsersRepository
             ]);
         } catch (PDOException $e) {
             if (DatabaseErrors::isDuplicateEntry($e)) {
-                throw new InvalidArgumentException("Email ('{$user->getEmail()}') or Employee code ('{$user->getEmployeeCode()}') is already in use.");
+                throw new Conflict("Email ('{$user->getEmail()}') or Employee code ('{$user->getEmployeeCode()}') is already in use.");
             }
 
             if (DatabaseErrors::isCheckViolation($e)) {
@@ -84,7 +86,7 @@ readonly class UsersRepository
         $row = $this->db->query($sql, ['id' => $id]);
 
         if (empty($row)) {
-            throw new InvalidArgumentException("User with ID $id not found.");
+            throw new NotFound("User with ID $id not found.");
         }
 
         return self::mapToUserModel($row[0]);
@@ -96,7 +98,7 @@ readonly class UsersRepository
         $rowCount = $this->db->execute($sql, ['id' => $id]);
 
         if ($rowCount === 0) {
-            throw new InvalidArgumentException("User with ID $id not found.");
+            throw new NotFound("User with ID $id not found.");
         }
     }
 
@@ -149,7 +151,7 @@ readonly class UsersRepository
             $this->db->execute($sql, $params);
         } catch (PDOException $e) {
             if (DatabaseErrors::isDuplicateEntry($e)) {
-                throw new InvalidArgumentException("Email '{$user->getEmail()}' is already in use.");
+                throw new Conflict("Email '{$user->getEmail()}' is already in use.");
             }
 
             if (DatabaseErrors::isCheckViolation($e)) {

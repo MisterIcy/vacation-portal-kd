@@ -13,9 +13,9 @@ use App\Domains\Vacations\Services\DecideVacation;
 use App\Domains\Vacations\Services\ListVacations;
 use App\Shared\AccessDenied;
 use App\Shared\ModelCollection;
+use App\Shared\NotFound;
 use App\Shared\Principal;
 use DateTime;
-use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -111,9 +111,9 @@ class VacationUseCasesTest extends TestCase
     public function testDecidingAMissingRequestFails(): void
     {
         $repository = $this->createMock(VacationRequestRepository::class);
-        $repository->method('findById')->willThrowException(new InvalidArgumentException('Vacation with ID 5 not found.'));
+        $repository->method('findById')->willThrowException(new NotFound('Vacation with ID 5 not found.'));
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
 
         (new DecideVacation($repository))->approve(Principal::manager(1), 5);
     }
@@ -145,7 +145,7 @@ class VacationUseCasesTest extends TestCase
         $repository->method('findById')->willReturn($this->vacation(VacationStatus::Pending, ownerId: 99));
         $repository->expects($this->never())->method('delete');
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('Vacation with ID 5 not found.');
 
         (new CancelVacation($repository))(Principal::employee(2), 5);

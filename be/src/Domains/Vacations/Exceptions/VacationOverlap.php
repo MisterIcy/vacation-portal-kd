@@ -4,16 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domains\Vacations\Exceptions;
 
-use InvalidArgumentException;
+use App\Shared\Conflict;
 
 /**
  * The requested days collide with another request of the same employee that is still
- * pending or already approved.
- *
- * It extends InvalidArgumentException so it is reported as a 400 until the API
- * distinguishes conflicts (409) from other invalid requests.
+ * pending or already approved (reported as 409).
  */
-final class VacationOverlap extends InvalidArgumentException
+final class VacationOverlap extends Conflict
 {
     public static function withExistingRequest(): self
     {

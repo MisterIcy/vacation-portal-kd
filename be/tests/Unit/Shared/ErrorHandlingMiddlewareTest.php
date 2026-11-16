@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Shared;
 
 use App\Shared\AccessDenied;
+use App\Shared\Conflict;
 use App\Shared\ErrorHandlingMiddleware;
+use App\Shared\NotFound;
 use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
@@ -51,6 +53,8 @@ class ErrorHandlingMiddlewareTest extends TestCase
             'invalid input' => [new InvalidArgumentException('Name must not be empty.'), 400, 'Name must not be empty.'],
             'malformed json' => [new JsonException('Syntax error'), 400, 'Syntax error'],
             'a role that is not allowed' => [AccessDenied::forRole(), 403, 'Forbidden'],
+            'something that does not exist' => [new NotFound('Vacation with ID 5 not found.'), 404, 'Vacation with ID 5 not found.'],
+            'a clash with the current state' => [new Conflict('Email is already in use.'), 409, 'Email is already in use.'],
             'the router refusing access' => [new ForbiddenException(), 403, 'Forbidden'],
         ];
     }
@@ -80,15 +84,16 @@ class ErrorHandlingMiddlewareTest extends TestCase
         $this->assertStringContainsString('GET', $log);
     }
 
-    public function testClientErrorsAreNotLoggedAsFailures(): void
+    #[DataProvider('clientErrors')]
+    public function testClientErrorsAreNotLoggedAsFailures(Throwable $error): void
     {
         $logFile = tempnam(sys_get_temp_dir(), 'errlog');
         $this->assertIsString($logFile);
         $previous = ini_set('error_log', $logFile);
 
         try {
-            $this->handle(function (): never {
-                throw new InvalidArgumentException('Name must not be empty.');
+            $this->handle(function () use ($error): never {
+                throw $error;
             });
             $log = (string) file_get_contents($logFile);
         } finally {
@@ -96,7 +101,20 @@ class ErrorHandlingMiddlewareTest extends TestCase
             unlink($logFile);
         }
 
-        $this->assertSame('', $log, 'a 400 is the client\'s mistake, not an incident');
+        $this->assertSame('', $log, 'a 4xx is the client\'s mistake, not an incident');
+    }
+
+    /**
+     * @return array<string, array{Throwable}>
+     */
+    public static function clientErrors(): array
+    {
+        return [
+            'invalid input' => [new InvalidArgumentException('Name must not be empty.')],
+            'not found' => [new NotFound('Nothing here.')],
+            'conflict' => [new Conflict('Already taken.')],
+            'forbidden' => [AccessDenied::forRole()],
+        ];
     }
 
     /**
