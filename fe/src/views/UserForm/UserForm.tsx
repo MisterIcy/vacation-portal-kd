@@ -149,6 +149,8 @@ const UserFormFields = ({ id, existingUser }: UserFormFieldsProps) => {
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 required={!isEditMode}
+                minLength={8}
+                autoComplete="new-password"
                 placeholder="Minimum 8 characters"
               />
               <div className="user-form__help-text">Minimum 8 characters</div>
@@ -165,6 +167,9 @@ const UserFormFields = ({ id, existingUser }: UserFormFieldsProps) => {
                     value={formData.employeeCode}
                     onChange={(e) => setFormData({ ...formData, employeeCode: e.target.value })}
                     required
+                    maxLength={7}
+                    inputMode="numeric"
+                    title="Exactly 7 digits"
                     placeholder="7-digit code"
                     pattern="[0-9]{7}"
                   />

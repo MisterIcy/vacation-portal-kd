@@ -8,7 +8,11 @@ import { createVacation } from '@domains/vacations/api';
 import { Layout } from '@components/Layout';
 import { ErrorMessage } from '@components/ErrorMessage';
 import { getApiErrorMessage } from '@utils/apiError';
+import { todayUtc, addDays, countDays, MAX_VACATION_DAYS } from '@utils/calendarDate';
 import { createVacationStyles } from './CreateVacation.styles';
+
+/** The reason is stored in a column of this size. */
+const MAX_REASON_LENGTH = 255;
 
 export const CreateVacation = () => {
   const theme = useTheme() as Theme;
@@ -17,6 +21,10 @@ export const CreateVacation = () => {
   const [reason, setReason] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Guidance only: the server applies the same rules and has the last word.
+  const today = todayUtc();
+  const totalDays = countDays(startDate, endDate);
 
   const mutation = useMutation({
     mutationFn: createVacation,
@@ -45,6 +53,7 @@ export const CreateVacation = () => {
                 id="startDate"
                 type="date"
                 value={startDate}
+                min={today}
                 onChange={(e) => setStartDate(e.target.value)}
                 required
               />
@@ -57,10 +66,18 @@ export const CreateVacation = () => {
                 id="endDate"
                 type="date"
                 value={endDate}
+                min={startDate || today}
+                max={startDate ? addDays(startDate, MAX_VACATION_DAYS - 1) : undefined}
                 onChange={(e) => setEndDate(e.target.value)}
                 required
               />
             </div>
+
+            {totalDays !== null && (
+              <p className="create-vacation__total-days" aria-live="polite">
+                Total days: {totalDays}
+              </p>
+            )}
 
             <div className="create-vacation__input-group">
               <label className="create-vacation__label" htmlFor="reason">Reason</label>
@@ -68,10 +85,14 @@ export const CreateVacation = () => {
                 className="create-vacation__textarea"
                 id="reason"
                 value={reason}
+                maxLength={MAX_REASON_LENGTH}
                 onChange={(e) => setReason(e.target.value)}
                 required
                 placeholder="Please provide a reason for your vacation request"
               />
+              <div className="create-vacation__counter">
+                {reason.length} / {MAX_REASON_LENGTH}
+              </div>
             </div>
 
             {mutation.isError && (

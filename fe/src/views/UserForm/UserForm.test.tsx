@@ -35,11 +35,46 @@ const renderEditForm = () =>
     { initialRoute: '/users/5/edit', authUser: manager }
   );
 
+describe('UserForm (create)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('asks for a password of at least 8 characters', () => {
+    render(<UserForm />, { authUser: manager });
+
+    const password = screen.getByLabelText(/^password/i);
+    expect(password).toBeRequired();
+    expect(password).toHaveAttribute('minLength', '8');
+  });
+
+  it('asks for an employee code of exactly 7 digits', () => {
+    render(<UserForm />, { authUser: manager });
+
+    const code = screen.getByLabelText(/employee code/i);
+    expect(code).toBeRequired();
+    expect(code).toHaveAttribute('pattern', '[0-9]{7}');
+    expect(code).toHaveAttribute('maxLength', '7');
+    expect(code).toHaveAttribute('inputMode', 'numeric');
+  });
+
+  // Whether the browser then blocks a short password is browser behaviour that jsdom does not
+  // reproduce (it ignores minLength), so that is covered by the end-to-end tests instead.
+});
+
 describe('UserForm (edit)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getUser).mockResolvedValue(existingUser);
     vi.mocked(updateUser).mockResolvedValue(existingUser);
+  });
+
+  it('keeps the new password optional but still at least 8 characters when one is typed', async () => {
+    renderEditForm();
+
+    const password = await screen.findByLabelText(/^password/i);
+    expect(password).not.toBeRequired();
+    expect(password).toHaveAttribute('minLength', '8');
   });
 
   it('does not send a password when the field is left blank', async () => {
