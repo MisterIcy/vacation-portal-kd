@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@emotion/react';
 import { getVacations } from '@domains/vacations/api';
 import { Layout } from '@components/Layout';
+import { VacationRequests } from '@components/VacationRequests';
 import type { Theme } from '@styles/theme';
 import { employeeDashboardStyles } from './EmployeeDashboard.styles';
 
@@ -69,6 +70,13 @@ export const EmployeeDashboard = () => {
             </div>
           </div>
         )}
+
+        <section className="employee-dashboard__requests" aria-labelledby="my-requests-title">
+          <h3 id="my-requests-title" className="employee-dashboard__section-title">
+            My vacation requests
+          </h3>
+          <VacationRequests emptyMessage="You have not requested any vacation yet. Use “Request New Vacation” to submit one." />
+        </section>
       </div>
     </Layout>
   );

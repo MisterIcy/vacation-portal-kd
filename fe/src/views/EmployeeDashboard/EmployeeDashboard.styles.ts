@@ -72,4 +72,17 @@ export const employeeDashboardStyles = (theme: Theme) => css`
     font-size: ${theme.fontSize.xxxl};
     font-weight: 600;
   }
+
+  .employee-dashboard__requests {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .employee-dashboard__section-title {
+    margin: 0;
+    color: ${theme.colors.text.primary};
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
 `;
