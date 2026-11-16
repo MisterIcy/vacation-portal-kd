@@ -13,6 +13,10 @@ use Phinx\Migration\AbstractMigration;
  * The composite indexes serve these without a separate sort step. They also make two single-column
  * indexes redundant (an index on (a, b) already serves lookups on a), so those are dropped. The
  * foreign key on user_id still has the index it needs: it now starts with user_id.
+ *
+ * MySQL itself drops the foreign key's implicit user_id index as soon as a usable one exists, so
+ * whether it is still there depends on how the table was created; each old index is therefore
+ * only dropped if it is present.
  */
 final class AddVacationAccessPathIndexes extends AbstractMigration
 {
@@ -24,18 +28,22 @@ final class AddVacationAccessPathIndexes extends AbstractMigration
             ->update();
 
         // Only after the new indexes exist: the foreign key must never be left without one.
-        $this->table('vacations')
-            ->removeIndexByName('user_id')
-            ->removeIndexByName('status')
-            ->update();
+        foreach (['user_id', 'status'] as $redundant) {
+            $table = $this->table('vacations');
+            if ($table->hasIndexByName($redundant)) {
+                $table->removeIndexByName($redundant)->update();
+            }
+        }
     }
 
     public function down(): void
     {
-        $this->table('vacations')
-            ->addIndex(['user_id'], ['name' => 'user_id'])
-            ->addIndex(['status'], ['name' => 'status'])
-            ->update();
+        foreach (['user_id' => ['user_id'], 'status' => ['status']] as $name => $columns) {
+            $table = $this->table('vacations');
+            if (!$table->hasIndexByName($name)) {
+                $table->addIndex($columns, ['name' => $name])->update();
+            }
+        }
 
         $this->table('vacations')
             ->removeIndexByName('idx_vacations_user_from')
