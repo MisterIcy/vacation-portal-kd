@@ -74,6 +74,86 @@ Refer to the `run` script for more details on each command.
   ```sh
   ./run teardown && ./run build
   ```
+  The same `Access denied` error appears if you change `DB_USERNAME` or
+  `DB_PASSWORD` in `.env` after the database was first created: MySQL only
+  applies those values when it initialises an empty volume. Run
+  `./run teardown` (which deletes the database volume) before building again
+  whenever you change them.
+
+### Runbooks (local environment)
+
+Short, step-by-step procedures for situations that come up while working on
+the project. Commands assume a POSIX shell (Git Bash on Windows).
+
+**Reset to a clean state** (all data is deleted and the two test users are
+re-seeded)
+
+1. `./run teardown` removes the containers and the database volume.
+2. `./run build` rebuilds the images, runs the migrations and the seed, then
+   stops the stack.
+3. `./run start` starts it again.
+4. Check: <http://localhost:5173> loads and `manager@example.com` can log in.
+
+**Back up the database**
+
+```sh
+docker exec vacation_db sh -c 'mysqldump --single-transaction -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > backup.sql
+```
+
+The dump contains personal data and password hashes. Keep it out of git and
+out of shared or synced folders.
+
+**Restore the database from a backup** (replaces the current data)
+
+1. Make sure the stack is running (`./run start`).
+2. Load the dump:
+   ```sh
+   docker exec -i vacation_db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < backup.sql
+   ```
+3. Check: log in and confirm the users and vacation requests you expect. A
+   backup that has never been restored has not been proven to work, so try
+   this once.
+
+**The stack won't start because a port is in use**
+
+The project uses ports 5173 (UI), 8080 (API) and 3306 (MySQL). Stop whatever
+holds the port (a local MySQL is the usual cause), or run `./run teardown` if
+an earlier copy of this stack is still running, then `./run start`.
+
+**The API returns 5xx errors**
+
+1. `docker logs vacation_be --tail 50` shows the web server output.
+2. `docker compose -p vacation-portal ps` shows whether `vacation_db` is up
+   and healthy.
+3. If the logs mention `Access denied` or an unknown database, follow the
+   MySQL init race entry above.
+
+## Delivery and operations (proposed design)
+
+The project runs locally with Docker Compose. Nothing is deployed, so this
+section describes how it would be operated as an internal tool and the
+runbooks that would back it. It is a design, not an implemented pipeline.
+
+**Release flow:** every change goes through a pull request with the automated
+checks (`composer check:all`, `npm run validate`, the test suites, and the
+Cypress journeys). Merged changes are built into one image per service, tagged
+with the git commit, and promoted from staging to production after approval.
+
+**Runbooks the production setup would need**
+
+| Situation | Procedure in short |
+|---|---|
+| Deploy | Run database migrations first (backward compatible with the running version), then roll out the new images, wait for the health check, then run a smoke test. |
+| Roll back | Redeploy the previous image tag. Because migrations only add things, the database needs no change. |
+| Restore the database | Restore the latest snapshot to a new instance, or to a point in time, check the data, then switch the application to it. Practise this regularly. |
+| Rotate `JWT_SECRET` | Changing the secret signs everyone out (tokens last one hour). To avoid that, the application would accept two keys during the switch. |
+| Offboard a user | A manager deletes the account, which also deletes their vacation requests. With the current design an existing login token keeps working until it expires. Checking the user in the database on each request closes that gap. |
+| Add the first manager | The seed creates the initial manager. Further managers are created by an existing manager through the user form. |
+| API errors | Check the health endpoint, the application logs and the database connection, in that order. |
+
+**Observability:** logs written to standard output, an uptime check on a health
+endpoint, an alert on the rate of 5xx responses, and daily database backups
+with point-in-time recovery.
 
 ## Repository layout
 
