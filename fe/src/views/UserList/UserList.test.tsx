@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AxiosError, type AxiosResponse } from 'axios';
 import { UserList } from './UserList';
 import { render } from '@tests/test-utils';
 import { getUsers, deleteUser } from '@domains/users/api';
@@ -72,5 +73,22 @@ describe('UserList', () => {
     expect(vi.mocked(deleteUser).mock.calls[0][0]).toBe(2);
 
     confirm.mockRestore();
+  });
+
+  it("shows the server's message when a delete is refused", async () => {
+    vi.mocked(getUsers).mockResolvedValue([buildUser()]);
+    vi.mocked(deleteUser).mockRejectedValue(
+      new AxiosError('Request failed', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: { status_code: 400, reason_phrase: 'You cannot delete your own account' },
+      } as AxiosResponse)
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(<UserList />, { authUser: manager });
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('You cannot delete your own account');
   });
 });

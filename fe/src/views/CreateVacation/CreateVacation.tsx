@@ -6,6 +6,8 @@ import { useTheme } from '@emotion/react';
 import type { Theme } from '@styles/theme';
 import { createVacation } from '@domains/vacations/api';
 import { Layout } from '@components/Layout';
+import { ErrorMessage } from '@components/ErrorMessage';
+import { getApiErrorMessage } from '@utils/apiError';
 import { createVacationStyles } from './CreateVacation.styles';
 
 export const CreateVacation = () => {
@@ -73,9 +75,10 @@ export const CreateVacation = () => {
             </div>
 
             {mutation.isError && (
-              <div className="create-vacation__error-message">
-                Failed to create vacation request. Please try again.
-              </div>
+              <ErrorMessage
+                className="create-vacation__error-message"
+                message={getApiErrorMessage(mutation.error, 'Failed to create vacation request. Please try again.')}
+              />
             )}
 
             <div className="create-vacation__button-group">

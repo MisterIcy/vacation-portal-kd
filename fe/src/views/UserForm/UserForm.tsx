@@ -7,6 +7,8 @@ import type { Theme } from '@styles/theme';
 import { createUser, updateUser, getUser } from '@domains/users/api';
 import { Layout } from '@components/Layout';
 import { useAuth } from '@hooks/useAuth';
+import { ErrorMessage } from '@components/ErrorMessage';
+import { getApiErrorMessage } from '@utils/apiError';
 import { userFormStyles } from './UserForm.styles';
 
 export const UserForm = () => {
@@ -176,9 +178,10 @@ export const UserForm = () => {
             )}
 
             {mutation.isError && (
-              <div className="user-form__error-message">
-                Failed to {isEditMode ? 'update' : 'create'} user. Please try again.
-              </div>
+              <ErrorMessage
+                className="user-form__error-message"
+                message={getApiErrorMessage(mutation.error, `Failed to ${isEditMode ? 'update' : 'create'} user. Please try again.`)}
+              />
             )}
 
             <div className="user-form__button-group">

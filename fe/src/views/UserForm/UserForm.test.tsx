@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
+import { AxiosError, type AxiosResponse } from 'axios';
 import { UserForm } from './UserForm';
 import { render } from '@tests/test-utils';
 import { getUser, updateUser } from '@domains/users/api';
@@ -51,6 +52,22 @@ describe('UserForm (edit)', () => {
 
     await waitFor(() => expect(updateUser).toHaveBeenCalledTimes(1));
     expect(updateUser).toHaveBeenCalledWith(5, { email: 'jane@example.com', name: 'Jane Doe Jr' });
+  });
+
+  it("shows the server's message when the update is rejected", async () => {
+    vi.mocked(updateUser).mockRejectedValue(
+      new AxiosError('Request failed', 'ERR_BAD_REQUEST', undefined, undefined, {
+        status: 400,
+        data: { status_code: 400, reason_phrase: "Email 'taken@example.com' is already in use." },
+      } as AxiosResponse)
+    );
+    const user = userEvent.setup();
+    renderEditForm();
+
+    await screen.findByLabelText(/^name/i);
+    await user.click(screen.getByRole('button', { name: 'Update User' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Email 'taken@example.com' is already in use.");
   });
 
   it('sends the new password when one is entered', async () => {

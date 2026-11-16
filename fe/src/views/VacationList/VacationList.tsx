@@ -4,6 +4,8 @@ import { useTheme } from '@emotion/react';
 import type { Theme } from '@styles/theme';
 import { getVacations, deleteVacation, approveVacation, rejectVacation } from '@domains/vacations/api';
 import { Layout } from '@components/Layout';
+import { ErrorMessage } from '@components/ErrorMessage';
+import { getApiErrorMessage } from '@utils/apiError';
 import { useAuth } from '@hooks/useAuth';
 import { formatDate } from '@utils/dateFormat';
 import { vacationListStyles } from './VacationList.styles';
@@ -64,6 +66,14 @@ export const VacationList = () => {
             {isManager ? 'Vacation Requests' : 'My Vacation Requests'}
           </h2>
         </div>
+
+        <ErrorMessage
+          message={
+            [deleteMutation, approveMutation, rejectMutation]
+              .map((mutation) => (mutation.isError ? getApiErrorMessage(mutation.error, 'The action could not be completed. Please try again.') : null))
+              .find(Boolean)
+          }
+        />
 
         {isLoading ? (
           <div className="vacation-list__loading-state">Loading vacations...</div>

@@ -5,6 +5,8 @@ import { useTheme } from '@emotion/react';
 import type { Theme } from '@styles/theme';
 import { getUsers, deleteUser } from '@domains/users/api';
 import { Layout } from '@components/Layout';
+import { ErrorMessage } from '@components/ErrorMessage';
+import { getApiErrorMessage } from '@utils/apiError';
 import { useAuth } from '@hooks/useAuth';
 import { formatDate } from '@utils/dateFormat';
 import { userListStyles } from './UserList.styles';
@@ -42,6 +44,10 @@ export const UserList = () => {
             Add New User
           </Link>
         </div>
+
+        <ErrorMessage
+          message={deleteMutation.isError ? getApiErrorMessage(deleteMutation.error, 'Could not delete the user. Please try again.') : null}
+        />
 
         {isLoading ? (
           <div className="user-list__loading-state">Loading users...</div>
