@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Domains\Authentication\Middleware\AuthenticationMiddleware;
 use App\Domains\Authentication\Services\AuthenticationService;
+use App\Domains\Vacations\Repositories\VacationRequestRepository;
+use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Shared\Clock;
 use App\Shared\ErrorHandlingMiddleware;
 use App\Shared\PasswordHasherArgon2id;
@@ -54,6 +56,8 @@ $container->add(Psr\Http\Message\RequestInterface::class, function () {
 $container->add(Psr\Http\Message\ResponseInterface::class, Laminas\Diactoros\Response::class);
 $container->add(PasswordHasher::class, PasswordHasherArgon2id::class);
 $container->add(Clock::class, SystemClock::class);
+// Resolved through the container (not given as a class name), so the repository's own dependencies are autowired.
+$container->add(VacationRequestRepository::class, fn () => $container->get(VacationsRepository::class));
 $container->add(AuthenticationService::class, function () {
     return new AuthenticationService(
         $_ENV['JWT_SECRET'],

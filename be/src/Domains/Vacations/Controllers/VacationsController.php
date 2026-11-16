@@ -5,74 +5,68 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Controllers;
 
 use App\Domains\Authentication\Services\AccessControlService;
-use App\Domains\Vacations\Models\VacationRequest;
-use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Domains\Vacations\Requests\CreateVacationRequest;
+use App\Domains\Vacations\Services\CancelVacation;
+use App\Domains\Vacations\Services\DecideVacation;
+use App\Domains\Vacations\Services\ListVacations;
 use App\Domains\Vacations\Services\RequestVacation;
-use Closure;
-use DateMalformedStringException;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
-use League\Route\Http\Exception\ForbiddenException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
+/**
+ * The HTTP side of vacation requests: read the request, call the use case for the caller, and
+ * write the response. The rules (who may do what, and when) live in the use cases and the
+ * vacation request itself.
+ */
 readonly class VacationsController
 {
     public function __construct(
-        private VacationsRepository $vacationsRepository,
         private AccessControlService $accessControl,
+        private ListVacations $listVacations,
         private RequestVacation $requestVacation,
+        private DecideVacation $decideVacation,
+        private CancelVacation $cancelVacation,
     ) {
     }
 
-    /**
-     * @throws DateMalformedStringException
-     */
     public function list(ServerRequestInterface $request): ResponseInterface
     {
-        // Just checking the isManagerFromRequest also validates that the user is authenticated. If we introduce
-        // more roles in the future, we will need to adjust this logic.
-        if ($this->accessControl->isManagerFromRequest($request)) {
-            $vacationsCollection = $this->vacationsRepository->findPendingRequests();
-        } else {
-            $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-            $vacationsCollection = $this->vacationsRepository->findUserRequests($authenticatedUser->getId());
-        }
+        $vacations = ($this->listVacations)($this->accessControl->principalFromRequest($request));
 
-        return new JsonResponse($vacationsCollection, 200);
+        return new JsonResponse($vacations, 200);
     }
 
     /**
      * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
      */
     public function approve(ServerRequestInterface $request, array $params): ResponseInterface
     {
-        return $this->decide($request, $params, fn (VacationRequest $vacation, int $managerId) => $vacation->approve($managerId));
+        $decided = $this->decideVacation->approve($this->accessControl->principalFromRequest($request), (int) $params['id']);
+
+        return new JsonResponse($decided, 200);
     }
 
     /**
      * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
      */
     public function reject(ServerRequestInterface $request, array $params): ResponseInterface
     {
-        return $this->decide($request, $params, fn (VacationRequest $vacation, int $managerId) => $vacation->reject($managerId));
+        $decided = $this->decideVacation->reject($this->accessControl->principalFromRequest($request), (int) $params['id']);
+
+        return new JsonResponse($decided, 200);
     }
 
     /**
-     * @throws JsonException|ForbiddenException|DateMalformedStringException
+     * @throws JsonException
      */
     public function create(ServerRequestInterface $request): ResponseInterface
     {
-        $this->requireEmployee($request);
-        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-
         $input = CreateVacationRequest::fromRequest($request);
 
         $vacation = ($this->requestVacation)(
-            $authenticatedUser->getId(),
+            $this->accessControl->principalFromRequest($request),
             $input->getFrom(),
             $input->getTo(),
             $input->getReason(),
@@ -83,63 +77,11 @@ readonly class VacationsController
 
     /**
      * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
      */
     public function delete(ServerRequestInterface $request, array $params): ResponseInterface
     {
-        $this->requireEmployee($request);
-        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-        $vacationId = (int) $params['id'];
-
-        // Who may cancel, and when, is decided by the vacation request itself.
-        $this->vacationsRepository->findById($vacationId)->cancel($authenticatedUser->getId());
-
-        $this->vacationsRepository->delete($vacationId);
+        ($this->cancelVacation)($this->accessControl->principalFromRequest($request), (int) $params['id']);
 
         return new JsonResponse('', 204);
-    }
-
-    /**
-     * @param array{id: int} $params
-     * @param Closure(VacationRequest, int): VacationRequest $decision applies the manager's decision to the request
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    private function decide(ServerRequestInterface $request, array $params, Closure $decision): ResponseInterface
-    {
-        $this->requireManager($request);
-        $managerId = $this->accessControl->getAuthenticatedUserModelFromRequest($request)->getId();
-        $vacationId = (int) $params['id'];
-
-        // The vacation request enforces that it is still pending; the conditional UPDATE in the
-        // repository is what keeps two managers deciding at the same moment from both winning.
-        $decided = $decision($this->vacationsRepository->findById($vacationId), $managerId);
-
-        $saved = $this->vacationsRepository->updateStatus($vacationId, $managerId, $decided->getStatus());
-
-        return new JsonResponse($saved, 200);
-    }
-
-    /**
-     * @param ServerRequestInterface $request
-     * @return void
-     * @throws ForbiddenException
-     */
-    private function requireManager(ServerRequestInterface $request): void
-    {
-        if (!$this->accessControl->isManagerFromRequest($request)) {
-            throw new ForbiddenException();
-        }
-    }
-
-    /**
-     * @param ServerRequestInterface $request
-     * @return void
-     * @throws ForbiddenException
-     */
-    private function requireEmployee(ServerRequestInterface $request): void
-    {
-        if (!$this->accessControl->isEmployeeFromRequest($request)) {
-            throw new ForbiddenException();
-        }
     }
 }

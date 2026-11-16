@@ -6,7 +6,7 @@ namespace App\Domains\Vacations\Services;
 
 use App\Domains\Vacations\Exceptions\VacationOverlap;
 use App\Domains\Vacations\Models\VacationRequest;
-use App\Domains\Vacations\Repositories\VacationsRepository;
+use App\Domains\Vacations\Repositories\VacationRequestRepository;
 use App\Shared\Clock;
 use InvalidArgumentException;
 
@@ -19,7 +19,7 @@ use InvalidArgumentException;
  */
 readonly class VacationPolicy
 {
-    public function __construct(private VacationsRepository $vacations, private Clock $clock)
+    public function __construct(private VacationRequestRepository $vacations, private Clock $clock)
     {
     }
 

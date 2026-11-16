@@ -7,6 +7,7 @@ namespace App\Domains\Authentication\Services;
 use App\Domains\Authentication\Middleware\AuthenticationMiddleware;
 use App\Domains\Authentication\Models\AuthenticatedUserModel;
 use App\Domains\Users\Models\UserRole;
+use App\Shared\Principal;
 use LogicException;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -26,6 +27,20 @@ readonly class AccessControlService
     public function isManagerFromRequest(ServerRequestInterface $request): bool
     {
         return $this->getAuthenticatedUserModelFromRequest($request)->getRole() === UserRole::Manager;
+    }
+
+    /**
+     * The caller as the application layer sees them, free of anything HTTP or authentication specific.
+     *
+     * @throws LogicException when the endpoint is not behind the authentication middleware
+     */
+    public function principalFromRequest(ServerRequestInterface $request): Principal
+    {
+        $user = $this->getAuthenticatedUserModelFromRequest($request);
+
+        return $user->getRole() === UserRole::Manager
+            ? Principal::manager($user->getId())
+            : Principal::employee($user->getId());
     }
 
     /**

@@ -16,7 +16,7 @@ use DateMalformedStringException;
 use InvalidArgumentException;
 use PDOException;
 
-readonly class VacationsRepository
+readonly class VacationsRepository implements VacationRequestRepository
 {
     public function __construct(private Database $db)
     {
