@@ -8,9 +8,9 @@ use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Models\VacationModel;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
+use App\Domains\Vacations\Requests\CreateVacationRequest;
 use App\Shared\JsonErrorResponse;
 use DateMalformedStringException;
-use DateTime;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
 use League\Route\Http\Exception\ForbiddenException;
@@ -66,16 +66,15 @@ readonly class VacationsController
         $this->requireEmployee($request);
         $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
 
-        /** @var array<string, string> $body */
-        $body = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $input = CreateVacationRequest::fromRequest($request);
 
         $vacationModel = new VacationModel(
             null,
             $authenticatedUser->getId(),
             null,
-            new DateTime($body['from'] ?? ''),
-            new DateTime($body['to'] ?? ''),
-            $body['reason'] ?? '',
+            $input->getFrom(),
+            $input->getTo(),
+            $input->getReason(),
             VacationStatus::Pending
         );
 
