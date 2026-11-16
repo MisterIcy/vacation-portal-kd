@@ -54,6 +54,28 @@ describe('UserForm (edit)', () => {
     expect(updateUser).toHaveBeenCalledWith(5, { email: 'jane@example.com', name: 'Jane Doe Jr' });
   });
 
+  it('lets the manager clear a field instead of snapping back to the old value', async () => {
+    const user = userEvent.setup();
+    renderEditForm();
+
+    const name = await screen.findByLabelText(/^name/i);
+    expect(name).toHaveValue('Jane Doe');
+
+    await user.clear(name);
+
+    expect(name).toHaveValue('');
+  });
+
+  it('does not submit an emptied required field', async () => {
+    const user = userEvent.setup();
+    renderEditForm();
+
+    await user.clear(await screen.findByLabelText(/^name/i));
+    await user.click(screen.getByRole('button', { name: 'Update User' }));
+
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
   it("shows the server's message when the update is rejected", async () => {
     vi.mocked(updateUser).mockRejectedValue(
       new AxiosError('Request failed', 'ERR_BAD_REQUEST', undefined, undefined, {
