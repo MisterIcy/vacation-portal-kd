@@ -32,8 +32,9 @@ $dbConfig = [
     'charset'  => $_ENV['DB_CHARSET'],
 ];
 
-// Add the database to the container
-$container->add(App\Shared\Database::class, function () use ($dbConfig) {
+// Add the database to the container. It is shared, so everything in a request uses the same
+// connection: a transaction only covers the queries that run on the connection that opened it.
+$container->addShared(App\Shared\Database::class, function () use ($dbConfig) {
     return new App\Shared\Database($dbConfig);
 });
 

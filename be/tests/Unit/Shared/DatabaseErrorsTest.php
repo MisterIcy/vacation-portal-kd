@@ -27,6 +27,14 @@ class DatabaseErrorsTest extends TestCase
         $this->assertFalse(DatabaseErrors::isDuplicateEntry($this->pdoException('23000', 1048))); // NOT NULL
     }
 
+    public function testOnlyDeadlocksAndLockWaitTimeoutsAreRetryable(): void
+    {
+        $this->assertTrue(DatabaseErrors::isRetryable($this->pdoException('40001', 1213)), 'deadlock');
+        $this->assertTrue(DatabaseErrors::isRetryable($this->pdoException('HY000', 1205)), 'lock wait timeout');
+        $this->assertFalse(DatabaseErrors::isRetryable($this->pdoException('23000', 1062)), 'a duplicate key fails again');
+        $this->assertFalse(DatabaseErrors::isRetryable(new PDOException('connection lost')));
+    }
+
     public function testIgnoresExceptionsWithoutDriverErrorInfo(): void
     {
         $exception = new PDOException('connection lost');

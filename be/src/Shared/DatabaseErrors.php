@@ -18,9 +18,24 @@ final class DatabaseErrors
     /** Duplicate entry for a unique key. */
     public const int DUPLICATE_ENTRY = 1062;
 
+    /** Lock wait timeout exceeded; try restarting the transaction. */
+    public const int LOCK_WAIT_TIMEOUT = 1205;
+
+    /** Deadlock found; the transaction was rolled back and can be retried. */
+    public const int DEADLOCK = 1213;
+
     public static function isDuplicateEntry(PDOException $exception): bool
     {
         return self::driverErrorCode($exception) === self::DUPLICATE_ENTRY;
+    }
+
+    /**
+     * Whether running the whole transaction again can succeed: another transaction was
+     * in the way, and nothing about this one was wrong.
+     */
+    public static function isRetryable(PDOException $exception): bool
+    {
+        return in_array(self::driverErrorCode($exception), [self::DEADLOCK, self::LOCK_WAIT_TIMEOUT], true);
     }
 
     public static function driverErrorCode(PDOException $exception): ?int
