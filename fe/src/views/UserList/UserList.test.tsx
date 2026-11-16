@@ -60,7 +60,7 @@ describe('UserList', () => {
     const user = userEvent.setup();
 
     render(<UserList />, { authUser: manager });
-    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    const deleteButton = await screen.findByRole('button', { name: 'Delete Jane Doe' });
 
     confirm.mockReturnValueOnce(false);
     await user.click(deleteButton);
@@ -87,7 +87,7 @@ describe('UserList', () => {
     const user = userEvent.setup();
 
     render(<UserList />, { authUser: manager });
-    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete Jane Doe' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('You cannot delete your own account');
   });
