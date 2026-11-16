@@ -12,6 +12,34 @@ use PHPUnit\Framework\TestCase;
 
 class AuthenticationRepositoryTest extends TestCase
 {
+    public function testFindByIdReturnsTheCurrentUserWithoutAPasswordHash(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with($this->logicalAnd(
+                $this->stringContains('SELECT id, email, name, role FROM users WHERE id = :id'),
+                $this->logicalNot($this->stringContains('password'))
+            ), ['id' => 7])
+            ->willReturn([['id' => '7', 'email' => 'jane@example.com', 'name' => 'Jane', 'role' => 'manager']]);
+
+        $user = (new AuthenticationRepository($dbMock))->findById(7);
+
+        $this->assertNotNull($user);
+        $this->assertSame(7, $user->getId());
+        $this->assertSame('Jane', $user->getName());
+        $this->assertSame(UserRole::Manager, $user->getRole());
+        $this->assertNull($user->getHashedPassword());
+    }
+
+    public function testFindByIdReturnsNullForAnAccountThatNoLongerExists(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('query')->willReturn([]);
+
+        $this->assertNull((new AuthenticationRepository($dbMock))->findById(7));
+    }
+
     public function testFindByEmailReturnsUser(): void
     {
         $expectedId = 1;
