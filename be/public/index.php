@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use App\Domains\Authentication\Services\AuthenticationService;
+use App\Shared\Clock;
 use App\Shared\ErrorHandlingMiddleware;
 use App\Shared\PasswordHasherArgon2id;
 use App\Shared\Ports\PasswordHasher;
+use App\Shared\SystemClock;
 use Laminas\Diactoros\ResponseFactory;
 use League\Route\Strategy\JsonStrategy;
 
@@ -50,6 +52,7 @@ $container->add(Psr\Http\Message\RequestInterface::class, function () {
 });
 $container->add(Psr\Http\Message\ResponseInterface::class, Laminas\Diactoros\Response::class);
 $container->add(PasswordHasher::class, PasswordHasherArgon2id::class);
+$container->add(Clock::class, SystemClock::class);
 $container->add(AuthenticationService::class, function () {
     return new AuthenticationService(
         $_ENV['JWT_SECRET'],

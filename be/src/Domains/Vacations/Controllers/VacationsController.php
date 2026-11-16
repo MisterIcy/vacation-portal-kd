@@ -6,9 +6,9 @@ namespace App\Domains\Vacations\Controllers;
 
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Models\VacationRequest;
-use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Domains\Vacations\Requests\CreateVacationRequest;
+use App\Domains\Vacations\Services\RequestVacation;
 use Closure;
 use DateMalformedStringException;
 use JsonException;
@@ -19,8 +19,11 @@ use Psr\Http\Message\ServerRequestInterface;
 
 readonly class VacationsController
 {
-    public function __construct(private VacationsRepository $vacationsRepository, private AccessControlService $accessControl)
-    {
+    public function __construct(
+        private VacationsRepository $vacationsRepository,
+        private AccessControlService $accessControl,
+        private RequestVacation $requestVacation,
+    ) {
     }
 
     /**
@@ -68,19 +71,14 @@ readonly class VacationsController
 
         $input = CreateVacationRequest::fromRequest($request);
 
-        $vacationModel = new VacationRequest(
-            null,
+        $vacation = ($this->requestVacation)(
             $authenticatedUser->getId(),
-            null,
             $input->getFrom(),
             $input->getTo(),
             $input->getReason(),
-            VacationStatus::Pending
         );
 
-        $vacationModel = $this->vacationsRepository->create($vacationModel);
-
-        return new JsonResponse($vacationModel, 201);
+        return new JsonResponse($vacation, 201);
     }
 
     /**

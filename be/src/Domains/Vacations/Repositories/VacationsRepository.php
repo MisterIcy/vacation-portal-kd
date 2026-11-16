@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Vacations\Repositories;
 
+use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
@@ -57,6 +58,45 @@ readonly class VacationsRepository
         }
 
         return $vacations;
+    }
+
+    /**
+     * Locks the employee's row until the surrounding transaction ends, so that one employee's
+     * submissions are handled one at a time. The row is only a lock handle: the users table
+     * belongs to the Users domain and is not read or changed here.
+     *
+     * Must be called inside a transaction.
+     *
+     * @throws InvalidArgumentException when the employee does not exist (any more)
+     */
+    public function lockEmployee(int $employeeId): void
+    {
+        $rows = $this->db->query('SELECT id FROM users WHERE id = :id FOR UPDATE', ['id' => $employeeId]);
+
+        if ($rows === []) {
+            throw new InvalidArgumentException("Employee with ID $employeeId not found.");
+        }
+    }
+
+    /**
+     * Whether the employee already has a pending or approved request that shares a day with
+     * the range (both ends included). Rejected requests do not block anything.
+     */
+    public function hasOverlap(int $employeeId, DateRange $range): bool
+    {
+        $sql = 'SELECT 1 FROM vacations
+                WHERE user_id = :user_id AND status IN (:pending, :approved)
+                AND `from` <= :to AND `to` >= :from LIMIT 1';
+
+        $rows = $this->db->query($sql, [
+            'user_id' => $employeeId,
+            'pending' => VacationStatus::Pending->value,
+            'approved' => VacationStatus::Approved->value,
+            'from' => $range->from()->format('Y-m-d'),
+            'to' => $range->to()->format('Y-m-d'),
+        ]);
+
+        return $rows !== [];
     }
 
     /**

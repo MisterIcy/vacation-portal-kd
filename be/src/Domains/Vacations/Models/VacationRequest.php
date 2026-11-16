@@ -8,6 +8,7 @@ use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Shared\DateTimes;
 use DateMalformedStringException;
 use DateTime;
+use DateTimeInterface;
 use InvalidArgumentException;
 use JsonSerializable;
 
@@ -30,8 +31,8 @@ readonly class VacationRequest implements JsonSerializable
         ?int $id,
         int $userId,
         ?EmployeeSummary $employee,
-        DateTime $from,
-        DateTime $to,
+        DateTimeInterface $from,
+        DateTimeInterface $to,
         string $reason,
         VacationStatus $status = VacationStatus::Pending,
         ?int $authorizedBy = null,

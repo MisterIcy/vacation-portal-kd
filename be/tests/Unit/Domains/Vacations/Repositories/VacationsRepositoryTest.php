@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Vacations\Repositories;
 
+use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
@@ -349,5 +350,60 @@ class VacationsRepositoryTest extends TestCase
         $vacations = $collection->jsonSerialize();
         $this->assertCount(1, $vacations);
         $this->assertSame($userId, $vacations[0]['user_id']);
+    }
+
+    public function testLockEmployeeLocksTheEmployeesRow(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with($this->stringContains('FROM users WHERE id = :id FOR UPDATE'), ['id' => 7])
+            ->willReturn([['id' => 7]]);
+
+        (new VacationsRepository($dbMock))->lockEmployee(7);
+    }
+
+    public function testLockEmployeeRefusesAnEmployeeThatNoLongerExists(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('query')->willReturn([]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Employee with ID 7 not found.');
+
+        (new VacationsRepository($dbMock))->lockEmployee(7);
+    }
+
+    public function testHasOverlapLooksForPendingAndApprovedRequestsSharingADay(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(fn (string $sql) => str_contains($sql, 'status IN (:pending, :approved)')
+                    && str_contains($sql, '`from` <= :to AND `to` >= :from')),
+                [
+                    'user_id' => 7,
+                    'pending' => 'pending',
+                    'approved' => 'approved',
+                    'from' => '2026-07-20',
+                    'to' => '2026-07-25',
+                ]
+            )
+            ->willReturn([['1' => 1]]);
+
+        $range = new DateRange(new DateTime('2026-07-20'), new DateTime('2026-07-25'));
+
+        $this->assertTrue((new VacationsRepository($dbMock))->hasOverlap(7, $range));
+    }
+
+    public function testHasOverlapIsFalseWhenNothingCollides(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('query')->willReturn([]);
+
+        $range = new DateRange(new DateTime('2026-07-20'), new DateTime('2026-07-25'));
+
+        $this->assertFalse((new VacationsRepository($dbMock))->hasOverlap(7, $range));
     }
 }
