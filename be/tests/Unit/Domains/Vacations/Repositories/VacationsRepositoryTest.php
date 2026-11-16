@@ -79,7 +79,7 @@ class VacationsRepositoryTest extends TestCase
 
         $this->assertSame($expectedId, $created->getId());
         $this->assertSame($expectedUserId, $created->getUserId());
-        $this->assertNull($created->getUser());
+        $this->assertNull($created->getEmployee());
         $this->assertSame($expectedFrom, $created->getFrom()->format('Y-m-d'));
         $this->assertSame($expectedTo, $created->getTo()->format('Y-m-d'));
         $this->assertSame($expectedReason, $created->getReason());

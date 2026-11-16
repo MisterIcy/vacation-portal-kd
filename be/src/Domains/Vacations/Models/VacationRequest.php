@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domains\Vacations\Models;
 
-use App\Domains\Users\Models\UserModel;
 use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Shared\DateTimes;
 use DateMalformedStringException;
@@ -16,7 +15,7 @@ readonly class VacationRequest implements JsonSerializable
 {
     private ?int $id;
     private int $userId;
-    private ?UserModel $user;
+    private ?EmployeeSummary $employee;
     private DateRange $period;
     private string $reason;
     private VacationStatus $status;
@@ -30,7 +29,7 @@ readonly class VacationRequest implements JsonSerializable
     public function __construct(
         ?int $id,
         int $userId,
-        ?UserModel $user,
+        ?EmployeeSummary $employee,
         DateTime $from,
         DateTime $to,
         string $reason,
@@ -47,7 +46,7 @@ readonly class VacationRequest implements JsonSerializable
 
         $this->id = $id;
         $this->userId = $userId;
-        $this->user = $user;
+        $this->employee = $employee;
         $this->reason = $reason;
         $this->status = $status;
         $this->authorizedBy = $authorizedBy;
@@ -65,9 +64,9 @@ readonly class VacationRequest implements JsonSerializable
         return $this->userId;
     }
 
-    public function getUser(): ?UserModel
+    public function getEmployee(): ?EmployeeSummary
     {
-        return $this->user;
+        return $this->employee;
     }
 
     public function getPeriod(): DateRange
@@ -164,7 +163,7 @@ readonly class VacationRequest implements JsonSerializable
         return new self(
             $this->id,
             $this->userId,
-            $this->user,
+            $this->employee,
             $this->getFrom(),
             $this->getTo(),
             $this->reason,
@@ -191,7 +190,7 @@ readonly class VacationRequest implements JsonSerializable
         return [
             'id' => $this->id,
             'user_id' => $this->userId,
-            'user' => $this->user?->toArray(),
+            'user' => $this->employee?->toArray(),
             'from' => $this->period->from()->format('Y-m-d'),
             'to' => $this->period->to()->format('Y-m-d'),
             'days' => $this->getDays(),

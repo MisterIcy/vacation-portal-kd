@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Vacations\Models;
 
-use App\Domains\Users\Models\UserModel;
-use App\Domains\Users\Models\UserRole;
 use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\DateRange;
+use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use DateInterval;
@@ -27,7 +26,7 @@ class VacationRequestTest extends TestCase
 
         $this->assertNull($model->getId());
         $this->assertSame(1, $model->getUserId());
-        $this->assertNull($model->getUser());
+        $this->assertNull($model->getEmployee());
         $this->assertSame($from->format('Y-m-d'), $model->getFrom()->format('Y-m-d'));
         $this->assertSame($to->format('Y-m-d'), $model->getTo()->format('Y-m-d'));
         $this->assertSame('Holiday', $model->getReason());
@@ -39,7 +38,7 @@ class VacationRequestTest extends TestCase
 
     public function testValidConstructionAllFields(): void
     {
-        $user = new UserModel(null, 'employee@example.com', null, 'Employee Name', '1234567', UserRole::Employee);
+        $user = new EmployeeSummary(2, 'Employee Name', 'employee@example.com', '1234567', 'employee');
         $from = new DateTime()->add(new DateInterval('P1D'));
         $to = new DateTime()->add(new DateInterval('P2D'));
         $today = new DateTime();
@@ -50,7 +49,7 @@ class VacationRequestTest extends TestCase
 
         $this->assertSame(5, $model->getId());
         $this->assertSame(2, $model->getUserId());
-        $this->assertEquals($user, $model->getUser());
+        $this->assertEquals($user, $model->getEmployee());
         $this->assertSame($from->format('Y-m-d'), $model->getFrom()->format('Y-m-d'));
         $this->assertSame($to->format('Y-m-d'), $model->getTo()->format('Y-m-d'));
         $this->assertSame('Trip', $model->getReason());
@@ -92,7 +91,7 @@ class VacationRequestTest extends TestCase
 
     public function testToArrayAndJsonSerialize(): void
     {
-        $user = new UserModel(null, 'employee@example.com', null, 'Employee Name', '1234567', UserRole::Employee);
+        $user = new EmployeeSummary(2, 'Employee Name', 'employee@example.com', '1234567', 'employee');
         $from = new DateTime()->add(new DateInterval('P1D'));
         $to = new DateTime()->add(new DateInterval('P2D'));
         $today = new DateTime();
@@ -105,13 +104,11 @@ class VacationRequestTest extends TestCase
             'id' => 5,
             'user_id' => 2,
             'user' => [
-                'id' => null,
-                'email' => 'employee@example.com',
+                'id' => 2,
                 'name' => 'Employee Name',
+                'email' => 'employee@example.com',
                 'employee_code' => '1234567',
                 'role' => 'employee',
-                'created_at' => null,
-                'updated_at' => null,
             ],
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),

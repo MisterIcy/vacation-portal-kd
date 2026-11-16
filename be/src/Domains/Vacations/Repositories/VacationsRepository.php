@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Vacations\Repositories;
 
-use App\Domains\Users\Models\UserModel;
-use App\Domains\Users\Repositories\UsersRepository;
+use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Shared\Database;
@@ -34,14 +33,7 @@ readonly class VacationsRepository
         $vacations = new ModelCollection();
 
         foreach ($rows as $data) {
-            $user = UsersRepository::mapToUserModel([
-                'id' => $data['user_id'],
-                'name' => $data['employee_name'],
-                'email' => $data['employee_email'],
-                'employee_code' => $data['employee_code'],
-                'role' => $data['employee_role'],
-            ]);
-            $vacation = self::mapToVacationRequest($data, $user);
+            $vacation = self::mapToVacationRequest($data, self::mapToEmployeeSummary($data));
             $vacations->add($vacation);
         }
 
@@ -133,7 +125,7 @@ readonly class VacationsRepository
         return new VacationRequest(
             $id,
             $vacationModel->getUserId(),
-            $vacationModel->getUser(),
+            $vacationModel->getEmployee(),
             $vacationModel->getFrom(),
             $vacationModel->getTo(),
             $vacationModel->getReason(),
@@ -155,10 +147,27 @@ readonly class VacationsRepository
     }
 
     /**
+     * Reads the employee columns of the manager's query (vacations joined with users).
+     * Only this context's own summary is built; nothing is borrowed from the Users domain.
+     *
+     * @param array<string, mixed> $data
+     */
+    private static function mapToEmployeeSummary(array $data): EmployeeSummary
+    {
+        return new EmployeeSummary(
+            is_scalar($data['user_id'] ?? null) ? intval($data['user_id']) : 0,
+            is_string($data['employee_name'] ?? null) ? $data['employee_name'] : '',
+            is_string($data['employee_email'] ?? null) ? $data['employee_email'] : '',
+            is_string($data['employee_code'] ?? null) ? $data['employee_code'] : '',
+            is_string($data['employee_role'] ?? null) ? $data['employee_role'] : '',
+        );
+    }
+
+    /**
      * @param array<string, mixed> $data
      * @throws DateMalformedStringException
      */
-    public static function mapToVacationRequest(array $data, ?UserModel $user = null): VacationRequest
+    public static function mapToVacationRequest(array $data, ?EmployeeSummary $employee = null): VacationRequest
     {
         $id = (isset($data['id']) && is_scalar($data['id'])) ? intval($data['id']) : null;
         $userId = (isset($data['user_id']) && is_scalar($data['user_id'])) ? intval($data['user_id']) : null;
@@ -177,7 +186,7 @@ readonly class VacationsRepository
         return new VacationRequest(
             $id,
             $userId,
-            $user,
+            $employee,
             $from,
             $to,
             $reason,
