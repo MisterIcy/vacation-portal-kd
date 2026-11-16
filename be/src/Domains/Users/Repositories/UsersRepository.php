@@ -44,6 +44,10 @@ readonly class UsersRepository
                 throw new InvalidArgumentException("Email ('{$user->getEmail()}') or Employee code ('{$user->getEmployeeCode()}') is already in use.");
             }
 
+            if (DatabaseErrors::isCheckViolation($e)) {
+                throw new InvalidArgumentException('The submitted data violates a database rule.', 0, $e);
+            }
+
             throw $e;
         }
 
@@ -146,6 +150,10 @@ readonly class UsersRepository
         } catch (PDOException $e) {
             if (DatabaseErrors::isDuplicateEntry($e)) {
                 throw new InvalidArgumentException("Email '{$user->getEmail()}' is already in use.");
+            }
+
+            if (DatabaseErrors::isCheckViolation($e)) {
+                throw new InvalidArgumentException('The submitted data violates a database rule.', 0, $e);
             }
 
             throw $e;

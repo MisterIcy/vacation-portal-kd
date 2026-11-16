@@ -293,6 +293,21 @@ class UsersRepositoryTest extends TestCase
         $repo->update($user);
     }
 
+    public function testCreateReportsADatabaseRuleViolationAsInvalidData(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $repo = new UsersRepository($dbMock, new PasswordHasherArgon2id());
+        $user = new UserModel(null, 'test@example.com', 'password123', 'John Doe', '1234567', UserRole::Employee);
+        $dbMock->method('execute')->willThrowException(
+            self::pdoException('HY000', 3819, "Check constraint 'chk_users_employee_code' is violated.")
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The submitted data violates a database rule.');
+
+        $repo->create($user);
+    }
+
     public function testCreateDoesNotReportOtherIntegrityViolationsAsDuplicates(): void
     {
         // A foreign key failure shares SQLSTATE 23000 with a duplicate key but is a different problem.

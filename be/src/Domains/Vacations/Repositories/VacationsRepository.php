@@ -9,10 +9,12 @@ use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Shared\Database;
+use App\Shared\DatabaseErrors;
 use App\Shared\DateTimes;
 use App\Shared\ModelCollection;
 use DateMalformedStringException;
 use InvalidArgumentException;
+use PDOException;
 
 readonly class VacationsRepository
 {
@@ -143,13 +145,21 @@ readonly class VacationsRepository
         $sql = "INSERT INTO vacations (user_id, `from`, `to`, reason, status)
                 VALUES (:user_id, :from, :to, :reason, :status)";
 
-        $this->db->execute($sql, [
-            'user_id' => $vacationModel->getUserId(),
-            'from' => $vacationModel->getFrom()->format('Y-m-d'),
-            'to' => $vacationModel->getTo()->format('Y-m-d'),
-            'reason' => $vacationModel->getReason(),
-            'status' => $vacationModel->getStatus()->value,
-        ]);
+        try {
+            $this->db->execute($sql, [
+                'user_id' => $vacationModel->getUserId(),
+                'from' => $vacationModel->getFrom()->format('Y-m-d'),
+                'to' => $vacationModel->getTo()->format('Y-m-d'),
+                'reason' => $vacationModel->getReason(),
+                'status' => $vacationModel->getStatus()->value,
+            ]);
+        } catch (PDOException $e) {
+            if (DatabaseErrors::isCheckViolation($e)) {
+                throw new InvalidArgumentException('The submitted data violates a database rule.', 0, $e);
+            }
+
+            throw $e;
+        }
 
         $id = (int) $this->db->lastInsertId();
 

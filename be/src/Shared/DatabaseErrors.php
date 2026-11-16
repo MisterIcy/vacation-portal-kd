@@ -18,6 +18,9 @@ final class DatabaseErrors
     /** Duplicate entry for a unique key. */
     public const int DUPLICATE_ENTRY = 1062;
 
+    /** A CHECK constraint was violated. */
+    public const int CHECK_VIOLATION = 3819;
+
     /** Lock wait timeout exceeded; try restarting the transaction. */
     public const int LOCK_WAIT_TIMEOUT = 1205;
 
@@ -27,6 +30,15 @@ final class DatabaseErrors
     public static function isDuplicateEntry(PDOException $exception): bool
     {
         return self::driverErrorCode($exception) === self::DUPLICATE_ENTRY;
+    }
+
+    /**
+     * A value was refused by a rule declared in the database (CHECK constraint). The
+     * application validates first, so this means something got past it.
+     */
+    public static function isCheckViolation(PDOException $exception): bool
+    {
+        return self::driverErrorCode($exception) === self::CHECK_VIOLATION;
     }
 
     /**

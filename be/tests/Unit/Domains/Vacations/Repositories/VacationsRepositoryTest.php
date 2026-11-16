@@ -12,6 +12,7 @@ use App\Shared\Database;
 use DateMalformedStringException;
 use DateTime;
 use InvalidArgumentException;
+use PDOException;
 use PHPUnit\Framework\TestCase;
 
 class VacationsRepositoryTest extends TestCase
@@ -350,6 +351,21 @@ class VacationsRepositoryTest extends TestCase
         $vacations = $collection->jsonSerialize();
         $this->assertCount(1, $vacations);
         $this->assertSame($userId, $vacations[0]['user_id']);
+    }
+
+    public function testCreateReportsADatabaseRuleViolationAsInvalidData(): void
+    {
+        $exception = new PDOException("Check constraint 'chk_vacations_date_range' is violated.");
+        $exception->errorInfo = ['HY000', 3819, "Check constraint 'chk_vacations_date_range' is violated."];
+
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('execute')->willThrowException($exception);
+        $vacation = new VacationRequest(null, 1, null, new DateTime('2026-12-01'), new DateTime('2026-12-05'), 'Trip');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The submitted data violates a database rule.');
+
+        (new VacationsRepository($dbMock))->create($vacation);
     }
 
     public function testLockEmployeeLocksTheEmployeesRow(): void

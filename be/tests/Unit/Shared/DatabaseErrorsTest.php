@@ -27,6 +27,13 @@ class DatabaseErrorsTest extends TestCase
         $this->assertFalse(DatabaseErrors::isDuplicateEntry($this->pdoException('23000', 1048))); // NOT NULL
     }
 
+    public function testDetectsACheckConstraintViolation(): void
+    {
+        $this->assertTrue(DatabaseErrors::isCheckViolation($this->pdoException('HY000', 3819)));
+        $this->assertFalse(DatabaseErrors::isCheckViolation($this->pdoException('23000', 1062)));
+        $this->assertFalse(DatabaseErrors::isCheckViolation(new PDOException('connection lost')));
+    }
+
     public function testOnlyDeadlocksAndLockWaitTimeoutsAreRetryable(): void
     {
         $this->assertTrue(DatabaseErrors::isRetryable($this->pdoException('40001', 1213)), 'deadlock');
