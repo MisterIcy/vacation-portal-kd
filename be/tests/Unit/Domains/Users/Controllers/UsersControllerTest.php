@@ -17,6 +17,7 @@ use Laminas\Diactoros\ServerRequest;
 use Laminas\Diactoros\Response\JsonResponse;
 use Laminas\Diactoros\Stream;
 use League\Route\Http\Exception\ForbiddenException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use DateTime;
 
@@ -213,6 +214,59 @@ class UsersControllerTest extends TestCase
         $responseData = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($expectedEmail, $responseData['email']);
         $this->assertSame($expectedEmployeeCode, $responseData['employee_code']);
+    }
+
+    /**
+     * The edit form omits the password when the field is left blank; the user's
+     * current password must then be kept, not rejected as too short.
+     *
+     * @param array<string, string> $payload
+     * @throws DateMalformedStringException
+     * @throws JsonException
+     */
+    #[DataProvider('payloadsWithoutNewPassword')]
+    public function testUpdateWithoutNewPasswordKeepsCurrentPassword(array $payload): void
+    {
+        $existingUserModel = new UserModel(
+            1,
+            'test@example.com',
+            null,
+            'John Doe',
+            '1234567',
+            UserRole::Employee,
+            new DateTime(),
+            new DateTime()
+        );
+
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(1)->willReturn($existingUserModel);
+        $usersRepository->expects($this->once())
+            ->method('update')
+            ->with($this->callback(
+                fn ($user) => $user instanceof UserModel
+                    && $user->getPassword() === null
+                    && $user->getName() === 'Jane Doe'
+            ))
+            ->willReturn($existingUserModel);
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write(json_encode($payload, JSON_THROW_ON_ERROR));
+        $request = new ServerRequest([], [], null, null, $body);
+
+        $response = new UsersController($usersRepository, $this->getMockAccessControlService())->update($request, ['id' => 1]);
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    /**
+     * @return array<string, array{array<string, string>}>
+     */
+    public static function payloadsWithoutNewPassword(): array
+    {
+        return [
+            'password key omitted' => [['name' => 'Jane Doe', 'email' => 'test@example.com']],
+            'password is an empty string' => [['name' => 'Jane Doe', 'email' => 'test@example.com', 'password' => '']],
+        ];
     }
 
     public function testDelete(): void

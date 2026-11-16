@@ -130,10 +130,14 @@ readonly class UsersController
         $body = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $existingUserModel = $this->usersRepository->findById((int) $params['id']);
 
+        // A missing or empty password means "keep the current one" (null is
+        // never written by the repository); a provided one is validated by the model.
+        $newPassword = ($body['password'] ?? '') === '' ? null : $body['password'];
+
         $userModel = new UserModel(
             $existingUserModel->getId(),
             $body['email'] ?? $existingUserModel->getEmail(),
-            $body['password'] ?? '',
+            $newPassword,
             $body['name'] ?? $existingUserModel->getName(),
             $existingUserModel->getEmployeeCode(),
             UserRole::from($body['role'] ?? $existingUserModel->getRole()->value)
