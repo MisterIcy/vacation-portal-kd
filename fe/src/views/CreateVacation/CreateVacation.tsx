@@ -5,6 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTheme } from '@emotion/react';
 import type { Theme } from '@styles/theme';
 import { createVacation } from '@domains/vacations/api';
+import { vacationKeys } from '@domains/vacations/queryKeys';
 import { Layout } from '@components/Layout';
 import { ErrorMessage } from '@components/ErrorMessage';
 import { getApiErrorMessage } from '@utils/apiError';
@@ -29,7 +30,7 @@ export const CreateVacation = () => {
   const mutation = useMutation({
     mutationFn: createVacation,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vacations'] });
+      queryClient.invalidateQueries({ queryKey: vacationKeys.all });
       navigate('/vacations');
     },
   });

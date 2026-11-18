@@ -18,6 +18,9 @@ export interface Vacation {
   updated_at: string;
 }
 
+/** What the list can be narrowed to; `all` means every status. */
+export type VacationStatusFilter = Vacation['status'] | 'all';
+
 export interface CreateVacationRequest {
   from: string;
   to: string;

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@emotion/react';
 import { getVacations } from '@domains/vacations/api';
+import { vacationKeys } from '@domains/vacations/queryKeys';
 import { Layout } from '@components/Layout';
 import { VacationRequests } from '@components/VacationRequests';
 import type { Theme } from '@styles/theme';
@@ -11,8 +12,8 @@ import { employeeDashboardStyles } from './EmployeeDashboard.styles';
 export const EmployeeDashboard = () => {
   const theme = useTheme() as Theme;
   const { data: vacations, isLoading } = useQuery({
-    queryKey: ['vacations'],
-    queryFn: getVacations,
+    queryKey: vacationKeys.list(),
+    queryFn: () => getVacations(),
   });
 
   const pendingCount = vacations?.filter(v => v.status === 'pending').length || 0;

@@ -4,6 +4,7 @@ import { ManagerDashboard } from './ManagerDashboard';
 import { render } from '@tests/test-utils';
 import { getUsers } from '@domains/users/api';
 import { getVacations } from '@domains/vacations/api';
+import type { Vacation } from '@domains/vacations/types';
 import type { User } from '@domains/users/types';
 import type { User as AuthUser } from '@domains/auth/types';
 
@@ -46,6 +47,21 @@ describe('ManagerDashboard', () => {
     expect(screen.getByRole('heading', { name: 'Users' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create user' })).toHaveAttribute('href', '/users/new');
     expect(screen.getByRole('link', { name: 'Edit Jane Doe' })).toBeInTheDocument();
+  });
+
+  it('counts the pending requests the server returns', async () => {
+    vi.mocked(getUsers).mockResolvedValue([buildUser({})]);
+    vi.mocked(getVacations).mockResolvedValue([
+      { id: 1 } as Vacation,
+      { id: 2 } as Vacation,
+      { id: 3 } as Vacation,
+    ]);
+
+    render(<ManagerDashboard />, { authUser: manager });
+
+    const card = (await screen.findByText('Pending Requests')).parentElement as HTMLElement;
+    await vi.waitFor(() => expect(card).toHaveTextContent('3'));
+    expect(vi.mocked(getVacations).mock.calls[0][0]).toBe('pending');
   });
 
   it('keeps the summary and the link to the pending requests', async () => {

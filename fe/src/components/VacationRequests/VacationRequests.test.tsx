@@ -71,6 +71,52 @@ describe('VacationRequests', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
   });
 
+  it('asks for the pending requests first and offers the other statuses to a manager', async () => {
+    vi.mocked(getVacations).mockResolvedValue([buildVacation()]);
+
+    render(<VacationRequests />, { authUser: manager });
+    await screen.findByText('Summer holiday');
+
+    expect(vi.mocked(getVacations).mock.calls[0][0]).toBe('pending');
+    expect(screen.getByRole('button', { name: 'Pending' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('loads the chosen status when a manager changes the filter', async () => {
+    vi.mocked(getVacations).mockImplementation(async (status) =>
+      status === 'approved' ? [buildVacation({ id: 4, reason: 'Already approved', status: 'approved' })] : [buildVacation()],
+    );
+    const user = userEvent.setup();
+
+    render(<VacationRequests />, { authUser: manager });
+    await screen.findByText('Summer holiday');
+    await user.click(screen.getByRole('button', { name: 'Approved' }));
+
+    expect(await screen.findByText('Already approved')).toBeInTheDocument();
+    expect(vi.mocked(getVacations).mock.calls.map(([status]) => status)).toEqual(['pending', 'approved']);
+    expect(screen.getByRole('button', { name: 'Approved' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('names the chosen status when a manager has nothing to show for it', async () => {
+    vi.mocked(getVacations).mockResolvedValue([]);
+    const user = userEvent.setup();
+
+    render(<VacationRequests />, { authUser: manager });
+    expect(await screen.findByText('No pending vacation requests.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Rejected' }));
+    expect(await screen.findByText('No rejected vacation requests.')).toBeInTheDocument();
+  });
+
+  it('does not offer a status filter to an employee, who always sees all of their own requests', async () => {
+    vi.mocked(getVacations).mockResolvedValue([buildVacation()]);
+
+    render(<VacationRequests />, { authUser: employee });
+    await screen.findByText('Summer holiday');
+
+    expect(screen.queryByRole('group', { name: 'Filter by status' })).not.toBeInTheDocument();
+    expect(vi.mocked(getVacations).mock.calls[0][0]).toBeUndefined();
+  });
+
   it('deletes a request only after the employee confirms', async () => {
     vi.mocked(getVacations).mockResolvedValue([buildVacation({ id: 9 })]);
     vi.mocked(deleteVacation).mockResolvedValue(undefined);

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@emotion/react';
 import { getVacations } from '@domains/vacations/api';
+import { vacationKeys } from '@domains/vacations/queryKeys';
 import { getUsers } from '@domains/users/api';
 import { Layout } from '@components/Layout';
 import { UserDirectory } from '@components/UserDirectory';
@@ -11,9 +12,9 @@ import { managerDashboardStyles } from './ManagerDashboard.styles';
 
 export const ManagerDashboard = () => {
   const theme = useTheme() as Theme;
-  const { data: vacations } = useQuery({
-    queryKey: ['vacations'],
-    queryFn: getVacations,
+  const { data: pendingVacations } = useQuery({
+    queryKey: vacationKeys.list('pending'),
+    queryFn: () => getVacations('pending'),
   });
 
   const { data: users } = useQuery({
@@ -21,7 +22,7 @@ export const ManagerDashboard = () => {
     queryFn: getUsers,
   });
 
-  const pendingCount = vacations?.filter(v => v.status === 'pending').length || 0;
+  const pendingCount = pendingVacations?.length ?? 0;
   const totalUsers = users?.length || 0;
   const employeeCount = users?.filter(u => u.role === 'employee').length || 0;
 
