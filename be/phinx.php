@@ -24,7 +24,18 @@ return
                 'pass' => $_ENV['DB_MIGRATION_PASSWORD'] ?? $_ENV['DB_PASSWORD'],
                 'port' => $_ENV['DB_PORT'],
                 'charset' => $_ENV['DB_CHARSET'],
-            ]
+            ],
+            // A throwaway database for the integration tests (`composer db:migrate:test`). It is
+            // configured separately so that nothing here can ever point at the development data.
+            'testing' => [
+                'adapter' => 'mysql',
+                'host' => $_ENV['TEST_DB_HOST'] ?? getenv('TEST_DB_HOST') ?: 'localhost',
+                'name' => $_ENV['TEST_DB_DATABASE'] ?? getenv('TEST_DB_DATABASE') ?: 'vacation_test',
+                'user' => $_ENV['TEST_DB_USERNAME'] ?? getenv('TEST_DB_USERNAME') ?: 'vacation_test',
+                'pass' => $_ENV['TEST_DB_PASSWORD'] ?? getenv('TEST_DB_PASSWORD') ?: '',
+                'port' => $_ENV['TEST_DB_PORT'] ?? getenv('TEST_DB_PORT') ?: '3306',
+                'charset' => 'utf8mb4',
+            ],
         ],
         'version_order' => 'creation'
     ];
