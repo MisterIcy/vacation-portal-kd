@@ -20,6 +20,7 @@ use League\Route\Http\Exception\ForbiddenException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use DateTime;
+use InvalidArgumentException;
 
 class UsersControllerTest extends TestCase
 {
@@ -141,7 +142,7 @@ class UsersControllerTest extends TestCase
      */
     public function testUpdate(): void
     {
-        $expectedId = 1;
+        $expectedId = 2;
         $expectedEmail = 'test2@example.com';
         $expectedPassword = 'password456';
         $expectedName = 'Jane Doe';
@@ -173,7 +174,7 @@ class UsersControllerTest extends TestCase
         $usersRepository = $this->createMock(UsersRepository::class);
         $usersRepository->expects($this->once())
             ->method('findById')
-            ->with(1)
+            ->with(2)
             ->willReturn($existingUserModel);
         $usersRepository->expects($this->once())
             ->method('update')
@@ -206,7 +207,7 @@ class UsersControllerTest extends TestCase
 
         $request = new ServerRequest([], [], null, null, $body);
 
-        $response = new UsersController($usersRepository, $this->getMockAccessControlService())->update($request, ['id' => 1]);
+        $response = new UsersController($usersRepository, $this->getMockAccessControlService())->update($request, ['id' => 2]);
         $this->assertInstanceOf(JsonResponse::class, $response);
         $this->assertSame(200, $response->getStatusCode());
 
@@ -267,6 +268,60 @@ class UsersControllerTest extends TestCase
             'password key omitted' => [['name' => 'Jane Doe', 'email' => 'test@example.com']],
             'password is an empty string' => [['name' => 'Jane Doe', 'email' => 'test@example.com', 'password' => '']],
         ];
+    }
+
+    public function testAManagerCannotChangeTheirOwnRole(): void
+    {
+        // The caller (id 1) is a manager; demoting themselves would remove their access, and if they were
+        // the last manager nobody could administer users any more.
+        $self = new UserModel(1, 'admin@example.com', null, 'Admin', '1000001', UserRole::Manager, new DateTime(), new DateTime());
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(1)->willReturn($self);
+        $usersRepository->expects($this->never())->method('update');
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write('{"role":"employee"}');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('You cannot change your own role');
+
+        (new UsersController($usersRepository, $this->getMockAccessControlService()))
+            ->update(new ServerRequest([], [], null, null, $body), ['id' => 1]);
+    }
+
+    public function testAManagerCanStillEditTheirOwnNameAndKeepTheirRole(): void
+    {
+        $self = new UserModel(1, 'admin@example.com', null, 'Admin', '1000001', UserRole::Manager, new DateTime(), new DateTime());
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(1)->willReturn($self);
+        $usersRepository->expects($this->once())->method('update')->willReturn($self);
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write('{"name":"New Name","role":"manager"}');
+
+        $response = (new UsersController($usersRepository, $this->getMockAccessControlService()))
+            ->update(new ServerRequest([], [], null, null, $body), ['id' => 1]);
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function testAManagerCanChangeSomeoneElsesRole(): void
+    {
+        $other = new UserModel(2, 'jane@example.com', null, 'Jane', '1000002', UserRole::Employee, new DateTime(), new DateTime());
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(2)->willReturn($other);
+        $usersRepository->expects($this->once())
+            ->method('update')
+            ->with($this->callback(fn (UserModel $user) => $user->getRole() === UserRole::Manager))
+            ->willReturn($other);
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write('{"role":"manager"}');
+
+        $response = (new UsersController($usersRepository, $this->getMockAccessControlService()))
+            ->update(new ServerRequest([], [], null, null, $body), ['id' => 2]);
+
+        $this->assertSame(200, $response->getStatusCode());
     }
 
     public function testDelete(): void

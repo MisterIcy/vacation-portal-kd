@@ -11,6 +11,7 @@ use App\Domains\Users\Requests\CreateUserRequest;
 use App\Domains\Users\Requests\UpdateUserRequest;
 use App\Shared\JsonErrorResponse;
 use DateMalformedStringException;
+use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
 use League\Route\Http\Exception\ForbiddenException;
@@ -128,6 +129,14 @@ readonly class UsersController
 
         $input = UpdateUserRequest::fromRequest($request);
         $existingUserModel = $this->usersRepository->findById((int) $params['id']);
+
+        // Giving up their own manager role would lock them out immediately, and if they were the last
+        // manager nobody could administer users any more. Someone else has to do it.
+        $caller = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
+        $newRole = $input->getRole();
+        if ($existingUserModel->getId() === $caller->getId() && $newRole !== null && $newRole !== $existingUserModel->getRole()) {
+            throw new InvalidArgumentException('You cannot change your own role');
+        }
 
         // A field that was not sent keeps its current value. No password means "keep
         // the current one" (the repository never writes null); a new one is validated by the model.
