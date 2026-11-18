@@ -5,6 +5,7 @@ import { useTheme } from '@emotion/react';
 import type { Theme } from '@styles/theme';
 import type { User } from '@domains/auth/types';
 import { navigationStyles } from './Navigation.styles';
+import { PendingRequestsBadge } from './PendingRequestsBadge';
 
 interface NavigationProps {
   user: User | null;
@@ -57,6 +58,7 @@ export const Navigation = ({ user, onLogout }: NavigationProps) => {
             </Link>
             <Link to="/vacations" className="navigation__nav-link" onClick={closeMobileMenu}>
               Vacation Requests
+              <PendingRequestsBadge />
             </Link>
             <Link to="/users" className="navigation__nav-link" onClick={closeMobileMenu}>
               Manage Users

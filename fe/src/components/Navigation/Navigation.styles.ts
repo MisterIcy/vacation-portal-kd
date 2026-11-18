@@ -52,6 +52,32 @@ export const navigationStyles = (theme: Theme, mobileMenuOpen: boolean) => css`
     }
   }
 
+  .navigation__badge {
+    display: inline-block;
+    min-width: 1.4rem;
+    margin-left: 0.5rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: ${theme.colors.warning.main};
+    color: ${theme.colors.warning.contrast};
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.4rem;
+    text-align: center;
+  }
+
+  .navigation__visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .navigation__nav-link {
     color: ${theme.colors.primary.contrast};
     text-decoration: none;
