@@ -69,7 +69,12 @@ class AuthenticationControllerTest extends TestCase
             ->method('findByEmail')
             ->willThrowException(new InvalidArgumentException());
         $hasher = $this->createMock(PasswordHasher::class);
+        // An unknown email must cost as much time as a wrong password, or the response time reveals
+        // which accounts exist: the password is hashed anyway, and nothing is verified or issued.
+        $hasher->expects($this->once())->method('hash')->with('irrelevant')->willReturn('hash');
+        $hasher->expects($this->never())->method('verify');
         $authService = $this->createMock(AuthenticationService::class);
+        $authService->expects($this->never())->method('createToken');
 
         $body = new Stream('php://temp', 'rw');
         $body->write(json_encode([

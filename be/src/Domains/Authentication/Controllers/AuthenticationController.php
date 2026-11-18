@@ -83,6 +83,10 @@ readonly class AuthenticationController
         try {
             $user = $this->authenticationRepository->findByEmail($loginRequest->getEmail());
         } catch (InvalidArgumentException) {
+            // Do the same expensive work as for a wrong password, so that the time this takes does
+            // not tell an attacker which email addresses have an account.
+            $this->passwordHasher->hash($loginRequest->getPassword());
+
             return new JsonErrorResponse(401, 'Invalid credentials');
         }
 
