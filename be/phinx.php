@@ -2,9 +2,8 @@
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-// Load environment variables
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->safeLoad(); // a .env file is optional: in a deployment the platform sets the variables
+// Load environment variables. A .env file is optional: in a deployment the platform sets them directly.
+App\Shared\Environment::load(__DIR__ . '/..');
 
 return
     [

@@ -9,6 +9,7 @@ use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Shared\Clock;
 use App\Shared\Configuration;
 use App\Shared\ConfigurationError;
+use App\Shared\Environment;
 use App\Shared\ErrorHandlingMiddleware;
 use App\Shared\PasswordHasherArgon2id;
 use App\Shared\Ports\PasswordHasher;
@@ -23,8 +24,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 date_default_timezone_set('UTC');
 
 // Load environment variables. A .env file is optional: in a deployment the platform sets them directly.
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
-$dotenv->safeLoad();
+Environment::load(__DIR__ . '/../..');
 
 // Refuse to run with a configuration that cannot work, with a message that names the setting
 // (never its value). Weak secrets are a warning here and an error when APP_ENV=production.
