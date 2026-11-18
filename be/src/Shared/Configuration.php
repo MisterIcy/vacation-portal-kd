@@ -88,7 +88,7 @@ final class Configuration
     /**
      * @param array<array-key, mixed> $environment
      */
-    private static function isProduction(array $environment): bool
+    public static function isProduction(array $environment): bool
     {
         return ($environment['APP_ENV'] ?? null) === 'production';
     }

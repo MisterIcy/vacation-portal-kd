@@ -86,6 +86,14 @@ class ConfigurationTest extends TestCase
         Configuration::assertValid($environment);
     }
 
+    public function testProductionIsOnlyRecognisedByAnExactValue(): void
+    {
+        $this->assertTrue(Configuration::isProduction(['APP_ENV' => 'production']));
+        $this->assertFalse(Configuration::isProduction(['APP_ENV' => 'development']));
+        $this->assertFalse(Configuration::isProduction(['APP_ENV' => 'Production']));
+        $this->assertFalse(Configuration::isProduction([]));
+    }
+
     public function testAStrongSecretIsAcceptedInProduction(): void
     {
         Configuration::assertValid([...$this->environment(), 'APP_ENV' => 'production']);

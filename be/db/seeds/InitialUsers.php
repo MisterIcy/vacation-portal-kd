@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Shared\Configuration;
 use App\Shared\PasswordHasherArgon2id;
 use Phinx\Seed\AbstractSeed;
 
@@ -17,6 +18,12 @@ class InitialUsers extends AbstractSeed
      */
     public function run(): void
     {
+        // These accounts have well-known passwords (they are in the README). They are for local
+        // development and must never exist in a real environment.
+        if (Configuration::isProduction($_ENV)) {
+            throw new RuntimeException('Refusing to create the demo accounts, which have published passwords, when APP_ENV=production.');
+        }
+
         if ($this->fetchRow("SELECT id FROM users WHERE email = 'manager@example.com'")) {
             return;
         }
