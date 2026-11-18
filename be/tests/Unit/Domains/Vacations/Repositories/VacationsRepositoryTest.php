@@ -6,6 +6,7 @@ namespace Tests\Unit\Domains\Vacations\Repositories;
 
 use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\DateRange;
+use App\Domains\Vacations\Models\StatusFilter;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
@@ -267,7 +268,7 @@ class VacationsRepositoryTest extends TestCase
     /**
      * @throws DateMalformedStringException
      */
-    public function testFindPendingRequests(): void
+    public function testFindRequestsForTheManagersQueue(): void
     {
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
@@ -314,7 +315,7 @@ class VacationsRepositoryTest extends TestCase
                 ]
             ]);
 
-        $collection = $repo->findPendingRequests();
+        $collection = $repo->findRequests(StatusFilter::Pending);
 
         /** @var array<int, array<string, mixed>> $vacations */
         $vacations = $collection->jsonSerialize();
@@ -332,6 +333,49 @@ class VacationsRepositoryTest extends TestCase
     /**
      * @throws DateMalformedStringException
      */
+    public function testTheManagersHistoryOfDecidedRequestsIsFilteredByStatusAndMostRecentFirst(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(fn (string $sql) => str_contains($sql, 'INNER JOIN users u ON v.user_id = u.id WHERE v.status = :status ORDER BY v.`from` DESC')),
+                ['status' => 'approved']
+            )
+            ->willReturn([]);
+
+        (new VacationsRepository($dbMock))->findRequests(StatusFilter::Approved);
+    }
+
+    public function testTheManagersListOfEveryRequestHasNoStatusCondition(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(fn (string $sql) => !str_contains($sql, 'v.status =')
+                    && str_contains($sql, 'INNER JOIN users u ON v.user_id = u.id ORDER BY v.`from` DESC')),
+                []
+            )
+            ->willReturn([]);
+
+        (new VacationsRepository($dbMock))->findRequests(StatusFilter::All);
+    }
+
+    public function testAnEmployeesRequestsCanBeNarrowedByStatusAndStayTheirOwn(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->equalTo('SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE user_id = :user_id AND status = :status ORDER BY `from` DESC'),
+                ['user_id' => 7, 'status' => 'pending']
+            )
+            ->willReturn([]);
+
+        (new VacationsRepository($dbMock))->findUserRequests(7, StatusFilter::Pending);
+    }
+
     public function testFindUserRequests(): void
     {
         $userId = 1;

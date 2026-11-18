@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Repositories;
 
 use App\Domains\Vacations\Models\DateRange;
+use App\Domains\Vacations\Models\StatusFilter;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Shared\ModelCollection;
@@ -17,14 +18,15 @@ use InvalidArgumentException;
 interface VacationRequestRepository
 {
     /**
-     * The requests waiting for a manager's decision, with who asked.
+     * Every employee's requests with who asked, narrowed by status. The manager's queue (pending) is
+     * ordered by start date, earliest first; any other list is most recent first.
      */
-    public function findPendingRequests(): ModelCollection;
+    public function findRequests(StatusFilter $filter): ModelCollection;
 
     /**
-     * One employee's own requests, most recent first.
+     * One employee's own requests, optionally narrowed by status, most recent first.
      */
-    public function findUserRequests(int $userId): ModelCollection;
+    public function findUserRequests(int $userId, StatusFilter $filter = StatusFilter::All): ModelCollection;
 
     /**
      * @throws InvalidArgumentException when there is no such request

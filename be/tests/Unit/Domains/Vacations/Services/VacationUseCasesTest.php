@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Domains\Vacations\Services;
 
 use App\Domains\Vacations\Exceptions\VacationNotPending;
+use App\Domains\Vacations\Models\StatusFilter;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationRequestRepository;
@@ -29,20 +30,48 @@ class VacationUseCasesTest extends TestCase
     {
         $pending = new ModelCollection();
         $repository = $this->createMock(VacationRequestRepository::class);
-        $repository->expects($this->once())->method('findPendingRequests')->willReturn($pending);
+        $repository->expects($this->once())->method('findRequests')->with(StatusFilter::Pending)->willReturn($pending);
         $repository->expects($this->never())->method('findUserRequests');
 
         $this->assertSame($pending, (new ListVacations($repository))(Principal::manager(1)));
     }
 
-    public function testAnEmployeeSeesOnlyTheirOwnRequests(): void
+    public function testAManagerCanAskForTheHistoryOfDecidedRequests(): void
+    {
+        $decided = new ModelCollection();
+        $repository = $this->createMock(VacationRequestRepository::class);
+        $repository->expects($this->once())->method('findRequests')->with(StatusFilter::Approved)->willReturn($decided);
+
+        $this->assertSame($decided, (new ListVacations($repository))(Principal::manager(1), StatusFilter::Approved));
+    }
+
+    public function testAManagerCanAskForEveryRequest(): void
+    {
+        $everything = new ModelCollection();
+        $repository = $this->createMock(VacationRequestRepository::class);
+        $repository->expects($this->once())->method('findRequests')->with(StatusFilter::All)->willReturn($everything);
+
+        $this->assertSame($everything, (new ListVacations($repository))(Principal::manager(1), StatusFilter::All));
+    }
+
+    public function testAnEmployeeSeesAllOfTheirOwnRequestsByDefault(): void
     {
         $own = new ModelCollection();
         $repository = $this->createMock(VacationRequestRepository::class);
-        $repository->expects($this->once())->method('findUserRequests')->with(5)->willReturn($own);
-        $repository->expects($this->never())->method('findPendingRequests');
+        $repository->expects($this->once())->method('findUserRequests')->with(5, StatusFilter::All)->willReturn($own);
+        $repository->expects($this->never())->method('findRequests');
 
         $this->assertSame($own, (new ListVacations($repository))(Principal::employee(5)));
+    }
+
+    public function testAnEmployeeCanNarrowTheirOwnRequestsByStatusButNeverSeeOthers(): void
+    {
+        $own = new ModelCollection();
+        $repository = $this->createMock(VacationRequestRepository::class);
+        $repository->expects($this->once())->method('findUserRequests')->with(5, StatusFilter::Pending)->willReturn($own);
+        $repository->expects($this->never())->method('findRequests');
+
+        $this->assertSame($own, (new ListVacations($repository))(Principal::employee(5), StatusFilter::Pending));
     }
 
     // ---- DecideVacation ---------------------------------------------------------------------

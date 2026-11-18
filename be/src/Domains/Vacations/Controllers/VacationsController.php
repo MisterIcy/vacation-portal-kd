@@ -7,6 +7,7 @@ namespace App\Domains\Vacations\Controllers;
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Requests\CreateVacationRequest;
+use App\Domains\Vacations\Models\StatusFilter;
 use App\Domains\Vacations\Services\CancelVacation;
 use App\Domains\Vacations\Services\DecideVacation;
 use App\Domains\Vacations\Services\ListVacations;
@@ -41,9 +42,18 @@ readonly class VacationsController
     ) {
     }
 
+    /**
+     * Optional query parameter `status`: pending, approved, rejected or all. Without it a manager gets
+     * the requests waiting for a decision and an employee gets all of their own.
+     *
+     * @throws InvalidArgumentException when the status is not one of the known values
+     */
     public function list(ServerRequestInterface $request): ResponseInterface
     {
-        $vacations = ($this->listVacations)($this->accessControl->principalFromRequest($request));
+        $vacations = ($this->listVacations)(
+            $this->accessControl->principalFromRequest($request),
+            $this->statusFilter($request),
+        );
 
         return new JsonResponse($vacations, 200);
     }
@@ -116,6 +126,22 @@ readonly class VacationsController
      * @throws InvalidArgumentException when the message is not a string or is too long
      * @throws JsonException when a body is sent that is not valid JSON
      */
+    private function statusFilter(ServerRequestInterface $request): ?StatusFilter
+    {
+        $queryParams = $request->getQueryParams();
+        if (!array_key_exists('status', $queryParams)) {
+            return null;
+        }
+
+        $value = $queryParams['status'];
+        $filter = is_string($value) ? StatusFilter::tryFrom($value) : null;
+        if ($filter === null) {
+            throw new InvalidArgumentException("'status' must be one of: " . StatusFilter::allowedValues() . '.');
+        }
+
+        return $filter;
+    }
+
     private function optionalMessage(ServerRequestInterface $request): ?string
     {
         if (trim((string) $request->getBody()) === '') {

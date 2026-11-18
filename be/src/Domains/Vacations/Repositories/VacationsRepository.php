@@ -7,6 +7,7 @@ namespace App\Domains\Vacations\Repositories;
 use App\Domains\Vacations\Exceptions\VacationNotPending;
 use App\Domains\Vacations\Models\DateRange;
 use App\Domains\Vacations\Models\EmployeeSummary;
+use App\Domains\Vacations\Models\StatusFilter;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Shared\Database;
@@ -27,13 +28,20 @@ readonly class VacationsRepository implements VacationRequestRepository
     /**
      * @throws DateMalformedStringException
      */
-    public function findPendingRequests(): ModelCollection
+    public function findRequests(StatusFilter $filter): ModelCollection
     {
+        $status = $filter->status();
+
+        // Only fixed fragments are joined into the SQL; the status itself is always a bound parameter.
+        $where = $status === null ? '' : ' WHERE v.status = :status';
+        // The queue of pending requests is worked from the earliest start; history reads newest first.
+        $order = $status === VacationStatus::Pending ? 'ASC' : 'DESC';
+
         $sql = "SELECT v.id, v.user_id, v.`from`, v.`to`, v.reason, v.status, v.authorized_by, v.created_at, v.updated_at,
             u.name AS employee_name, u.email AS employee_email, u.employee_code, u.role AS employee_role
-            FROM vacations v INNER JOIN users u ON v.user_id = u.id WHERE v.status = :status ORDER BY v.`from` ASC";
+            FROM vacations v INNER JOIN users u ON v.user_id = u.id{$where} ORDER BY v.`from` {$order}";
 
-        $rows = $this->db->query($sql, ['status' => VacationStatus::Pending->value]);
+        $rows = $this->db->query($sql, $status === null ? [] : ['status' => $status->value]);
 
         $vacations = new ModelCollection();
 
@@ -48,11 +56,19 @@ readonly class VacationsRepository implements VacationRequestRepository
     /**
      * @throws DateMalformedStringException
      */
-    public function findUserRequests(int $userId): ModelCollection
+    public function findUserRequests(int $userId, StatusFilter $filter = StatusFilter::All): ModelCollection
     {
-        $sql = "SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE user_id = :user_id ORDER BY `from` DESC";
+        $status = $filter->status();
+        $and = $status === null ? '' : ' AND status = :status';
 
-        $rows = $this->db->query($sql, ['user_id' => $userId]);
+        $sql = "SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE user_id = :user_id{$and} ORDER BY `from` DESC";
+
+        $params = ['user_id' => $userId];
+        if ($status !== null) {
+            $params['status'] = $status->value;
+        }
+
+        $rows = $this->db->query($sql, $params);
 
         $vacations = new ModelCollection();
 

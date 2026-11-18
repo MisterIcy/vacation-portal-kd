@@ -8,6 +8,7 @@ use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Controllers\VacationsController;
 use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
+use App\Domains\Vacations\Models\StatusFilter;
 use App\Domains\Vacations\Services\CancelVacation;
 use App\Domains\Vacations\Services\DecideVacation;
 use App\Domains\Vacations\Services\ListVacations;
@@ -25,6 +26,7 @@ use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\ServerRequest;
 use Laminas\Diactoros\Stream;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -60,12 +62,65 @@ class VacationsControllerTest extends TestCase
 
     public function testListReturnsWhatTheUseCaseReturnsForTheCaller(): void
     {
-        $this->listVacations->expects($this->once())->method('__invoke')->with($this->caller)->willReturn(new ModelCollection());
+        $this->listVacations->expects($this->once())->method('__invoke')->with($this->caller, null)->willReturn(new ModelCollection());
 
         $response = $this->controller()->list($this->request);
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('[]', (string) $response->getBody());
+    }
+
+    #[DataProvider('statusFilters')]
+    public function testListPassesTheRequestedStatusFilter(string $query, StatusFilter $expected): void
+    {
+        $this->listVacations->expects($this->once())
+            ->method('__invoke')
+            ->with($this->caller, $expected)
+            ->willReturn(new ModelCollection());
+
+        $response = $this->controller()->list($this->request->withQueryParams(['status' => $query]));
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    /**
+     * @return array<string, array{string, StatusFilter}>
+     */
+    public static function statusFilters(): array
+    {
+        return [
+            'pending' => ['pending', StatusFilter::Pending],
+            'approved' => ['approved', StatusFilter::Approved],
+            'rejected' => ['rejected', StatusFilter::Rejected],
+            'all' => ['all', StatusFilter::All],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     */
+    #[DataProvider('invalidStatusFilters')]
+    public function testListRejectsAStatusFilterItDoesNotKnow(array $query): void
+    {
+        $this->listVacations->expects($this->never())->method('__invoke');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'status' must be one of: pending, approved, rejected, all.");
+
+        $this->controller()->list($this->request->withQueryParams($query));
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function invalidStatusFilters(): array
+    {
+        return [
+            'an unknown word' => [['status' => 'everything']],
+            'the wrong case' => [['status' => 'PENDING']],
+            'empty' => [['status' => '']],
+            'a list instead of a value' => [['status' => ['pending', 'approved']]],
+        ];
     }
 
     public function testApproveCallsTheUseCaseWithTheCallerAndTheId(): void
