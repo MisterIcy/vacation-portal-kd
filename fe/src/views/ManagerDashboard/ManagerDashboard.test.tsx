@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { ManagerDashboard } from './ManagerDashboard';
 import { render } from '@tests/test-utils';
 import { getUsers } from '@domains/users/api';
@@ -60,7 +60,9 @@ describe('ManagerDashboard', () => {
     render(<ManagerDashboard />, { authUser: manager });
 
     const card = (await screen.findByText('Pending Requests')).parentElement as HTMLElement;
-    await vi.waitFor(() => expect(card).toHaveTextContent('3'));
+    await waitFor(() => expect(card).toHaveTextContent('3'));
+    // The navigation badge reads the same list, so the two always agree.
+    expect(await screen.findByRole('link', { name: /3 pending requests/ })).toBeInTheDocument();
     expect(vi.mocked(getVacations).mock.calls[0][0]).toBe('pending');
   });
 
