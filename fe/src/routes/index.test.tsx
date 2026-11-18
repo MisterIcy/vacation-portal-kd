@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { AppRoutes } from './index';
 import { render } from '@tests/test-utils';
@@ -23,14 +23,6 @@ const visit = (path: string, authUser: User | null) => {
 };
 
 describe('AppRoutes', () => {
-  beforeEach(() => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   describe('someone who is not signed in', () => {
     it.each(['/', '/dashboard', '/dashboard/manager', '/vacations', '/vacations/new', '/users', '/users/new', '/users/1/edit'])(
       'is sent to the login page from %s',

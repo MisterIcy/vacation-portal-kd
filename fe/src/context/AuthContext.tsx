@@ -55,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const intervalId = setInterval(() => {
       const currentToken = localStorage.getItem('token');
       if (currentToken && isTokenExpired(currentToken)) {
-        console.log('Token expired, logging out');
         logout();
         // Redirect to login if not already there
         if (window.location.pathname !== '/login') {

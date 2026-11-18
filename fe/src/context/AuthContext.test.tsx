@@ -106,7 +106,6 @@ describe('AuthProvider', () => {
 
     beforeEach(() => {
       vi.useFakeTimers();
-      vi.spyOn(console, 'log').mockImplementation(() => {});
     });
 
     afterEach(() => {

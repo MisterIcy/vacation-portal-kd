@@ -107,7 +107,7 @@ npm run test:coverage    # Coverage report (HTML in coverage/)
 npm run test:ui          # Visual test runner
 ```
 
-Current coverage: ~15% (3 components fully tested)
+Coverage thresholds are set in `vitest.config.ts`; `npm run test:coverage` fails when the suite falls below them.
 
 ### Validation
 
