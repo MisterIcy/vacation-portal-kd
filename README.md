@@ -128,6 +128,117 @@ an earlier copy of this stack is still running, then `./run start`.
 3. If the logs mention `Access denied` or an unknown database, follow the
    MySQL init race entry above.
 
+## Design decisions
+
+The assignment leaves several things open. These are the choices made, in plain terms, and why.
+
+| Decision | Why |
+|---|---|
+| **One authentication path.** A middleware reads the token once, loads the user from the database on every request and hands it to the controller. | Roles come from the database, not from the token, so a deleted or demoted person loses access immediately instead of when their token expires. Controllers no longer each repeat the check. Costs one primary-key lookup per request. |
+| **Every error has the same shape and a meaningful status:** 400 invalid input, 401 not signed in, 403 wrong role, 404 not found, 409 conflict with the current state, 500 unexpected (with a generic message). The body is always `{"status_code", "reason_phrase"}`. | The UI can show the server's own message, and the API describes itself. |
+| **Input is checked before it reaches a model or the database** (request classes per write endpoint). | No bad input becomes a 500, and the rules are in one place. |
+| **Dates are calendar days end to end** (`"2030-07-01"`), and the number of days is computed by the server (both ends included). | Avoids the classic time-zone off-by-one where a date shifts a day for some viewers. |
+| **Rules for a new request:** it may not start in the past, may span at most 60 days, and may not overlap another pending or approved request of the same employee. A single day is allowed. | The assignment is silent on these; they are the behaviour an HR tool needs. MySQL has no exclusion constraint, so the overlap check runs in a transaction that first locks the employee's row; two simultaneous submissions are handled one after the other. |
+| **A decision is a conditional write** (`UPDATE ... WHERE status = 'pending'`). | Two managers cannot both decide one request: the second gets a 409 and the stored result is unchanged. |
+| **Cancelling someone else's request answers 404**, the same as for a request that does not exist. | It does not reveal which ids are in use. |
+| **Domain-driven design where it pays.** The vacation context has real behaviour (a request that knows when it can be decided or cancelled, a date range value object, a policy, use cases and a repository interface). Users stays plain CRUD and authentication stays thin. | Matches the effort to where the rules are. The rules can be unit-tested without a database. |
+| **Notifications.** A manager sees a badge with the number of pending requests in the navigation (refreshed every minute and when the window regains focus). The employee is emailed when their request is approved or rejected (see below). | "Notify" needs no infrastructure this way. A queue and a real mail provider are the production path. |
+| **Manager history** with `GET /vacations?status=pending\|approved\|rejected\|all`, pending by default. | Additive and backward compatible. |
+| **The token is kept in `localStorage`.** | The least change for this assignment, with a small cross-site-scripting surface (React escapes output, no raw HTML). Production would use an httpOnly cookie with CSRF protection. |
+
+**Assumptions where the assignment is silent**
+
+- A manager can create other managers (the role is chosen when creating a user). Roles are not editable in the UI, and a manager cannot change their own role or delete their own account.
+- Managers decide on requests; they do not make or cancel them (403).
+- A rejected request frees its days again; approved and pending ones block them.
+- "All associated data is deleted" means a deleted user's vacation requests are deleted with them. Requests that user had *decided* stay, with the decider cleared.
+
+**Deliberately not built**
+
+| Left out | Why, and what it would take |
+|---|---|
+| Managers seeing only their own reports | There is no organisation structure in the assignment. It needs `users.manager_id` and an authorisation check on list and decide. |
+| Leave balances, public holidays, half days | Out of scope; they would be new tables and rules. |
+| A real mail provider and a queue | Emails are written to files (see below). Production would write an outbox row in the same transaction as the decision and send from a worker with retries. |
+| Pagination, login rate limiting, refresh tokens, single sign-on | Not needed at this size. They are the first things to add as it grows. |
+| An audit table | A decided request keeps who decided it (`authorized_by`) and, because it can no longer change, `updated_at` is when. A full history of changes would be an event table. |
+| Production images and a deployment pipeline | Described under *Delivery and operations* below, not built. |
+
+## Testing
+
+| Layer | What it covers | How to run |
+|---|---|---|
+| Backend unit (PHPUnit, PHPStan level max, php-cs-fixer) | Rules, use cases, controllers, repositories with a mocked database, and that the API documentation matches the routes | `./run check-be` |
+| Backend integration (PHPUnit, real MySQL) | What mocks cannot show: constraints and foreign keys, cascades, case-insensitive uniqueness, overlap boundaries, strict mode and UTC, the request use case with its lock, and that the migrations roll back and re-apply | see below |
+| Frontend (Vitest, Testing Library, ESLint, `tsc`) | Components, pages, who can open which route, the session and the API client. Coverage thresholds are enforced in `fe/vitest.config.ts` | `./run check-fe` |
+| End to end (Cypress) | The journeys of both roles through the UI, plus an API-level table of who may call what | `./run check-qa` (the app must be running) |
+
+**Integration tests.** They need their own throwaway MySQL, so they can never touch the development data. The test base class also refuses a database whose name does not contain `test`. Without `TEST_DB_HOST` set they are skipped; set `REQUIRE_INTEGRATION_TESTS=1` to make a missing database a failure instead.
+
+```sh
+# 1. A disposable MySQL in memory, on the same network as the stack (start it first with ./run start)
+docker run -d --rm --name vacation_db_test --network vacation-portal_default --tmpfs /var/lib/mysql \
+  -e MYSQL_RANDOM_ROOT_PASSWORD=1 -e MYSQL_DATABASE=vacation_test \
+  -e MYSQL_USER=vacation_test -e MYSQL_PASSWORD=vacation_test_pass mysql:8.3
+
+# 2. Apply the migrations, check they roll back and re-apply, and run the tests
+docker exec -w /var/www/html/be -e TEST_DB_HOST=vacation_db_test -e TEST_DB_PASSWORD=vacation_test_pass \
+  -e REQUIRE_INTEGRATION_TESTS=1 vacation_be sh -c 'composer db:verify-migrations && composer test:integration'
+
+# 3. Remove it
+docker stop vacation_db_test
+```
+
+## API documentation
+
+The API is described in OpenAPI 3.1, served at <http://localhost:8080/openapi.yaml> (the file is `be/public/openapi.yaml`). It is generated from attributes next to the controllers with `composer build:schema` (run inside the `vacation_be` container). A unit test fails if a route is not documented or if the committed file is out of date.
+
+## Database design and operations
+
+```mermaid
+erDiagram
+    users ||--o{ vacations : "requests (user_id, deleted with the user)"
+    users |o--o{ vacations : "decides (authorized_by, cleared when the manager is deleted)"
+    users {
+        int id PK
+        varchar email UK
+        varchar password "Argon2id hash"
+        varchar name
+        varchar employee_code UK "exactly 7 digits"
+        enum role "manager, employee"
+        timestamp created_at
+        timestamp updated_at
+    }
+    vacations {
+        int id PK
+        int user_id FK
+        date from "first day, included"
+        date to "last day, included"
+        varchar reason "at most 255"
+        enum status "pending, approved, rejected"
+        int authorized_by FK "null while pending"
+        timestamp created_at
+        timestamp updated_at
+    }
+```
+
+**The database enforces what it can**, so data written by anything other than the application (a script, a manual fix) cannot break the rules:
+
+- `email` and `employee_code` are unique. Email uniqueness ignores case (the column's collation), so `Ada@x.com` and `ada@x.com` are one address.
+- `CHECK (from <= to)` on vacations and `CHECK (employee_code REGEXP '^[0-9]{7}$')` on users (MySQL 8.0.16 or later enforces them).
+- `role` and `status` are enums, so an unknown value is refused.
+- `vacations.user_id` is a foreign key with `ON DELETE CASCADE` (a user's requests go with them). `authorized_by` is `ON DELETE SET NULL` (the history of the employees a manager decided on is kept).
+- Every connection runs in UTC with strict SQL mode, so a too-long value is an error instead of being silently cut off, and impossible dates are refused.
+- Overlap cannot be a constraint in MySQL, so it is checked by the application inside a transaction holding a lock on the employee's row.
+
+**Indexes** follow the queries. The manager's queue and history read by status and start date (`status, from`), an employee's list and the overlap check read by owner and start date (`user_id, from`). The foreign key on `user_id` uses the same index, so there is no separate one.
+
+**Migrations** are Phinx files in `be/db/migrations`. They are never edited once applied; changes are new files, each one reversible. `composer db:verify-migrations` (against the throwaway database above) migrates, rolls back everything and migrates again.
+
+**Database users.** The application should connect as a user that can only read and write rows, and migrations as one that can change the schema; see *Database users* below. Dates are `DATE` columns (no time zone), moments are stored in UTC.
+
+**Reset, back up and restore** are in the runbooks above. MySQL 8.4 LTS is the version to run in production; the project's Compose file uses 8.3.
+
 ## Delivery and operations (proposed design)
 
 The project runs locally with Docker Compose. Nothing is deployed, so this
@@ -147,7 +258,7 @@ with the git commit, and promoted from staging to production after approval.
 | Roll back | Redeploy the previous image tag. Because migrations only add things, the database needs no change. |
 | Restore the database | Restore the latest snapshot to a new instance, or to a point in time, check the data, then switch the application to it. Practise this regularly. |
 | Rotate `JWT_SECRET` | Changing the secret signs everyone out (tokens last one hour). To avoid that, the application would accept two keys during the switch. |
-| Offboard a user | A manager deletes the account, which also deletes their vacation requests. With the current design an existing login token keeps working until it expires. Checking the user in the database on each request closes that gap. |
+| Offboard a user | A manager deletes the account, which also deletes their vacation requests. Every request loads the user from the database, so the deleted person's login token stops working at once (401). |
 | Add the first manager | The seed creates the initial manager. Further managers are created by an existing manager through the user form. |
 | API errors | Check the health endpoint, the application logs and the database connection, in that order. |
 
