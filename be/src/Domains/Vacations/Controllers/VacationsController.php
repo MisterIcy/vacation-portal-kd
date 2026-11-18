@@ -22,6 +22,7 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -48,6 +49,35 @@ readonly class VacationsController
      *
      * @throws InvalidArgumentException when the status is not one of the known values
      */
+    #[OA\Get(
+        path: '/vacations',
+        operationId: 'listVacations',
+        description: 'A manager gets the requests of all employees (with who asked), by default only those waiting for a decision. '
+            . 'An employee gets only their own requests, by default of every status. '
+            . 'Pending requests are ordered by start date, earliest first; other lists, newest first.',
+        summary: 'List vacation requests',
+        security: [['BearerAuth' => []]],
+        tags: ['Vacation'],
+        parameters: [
+            new OA\Parameter(
+                name: 'status',
+                description: 'Narrow the list to one status, or `all`.',
+                in: 'query',
+                required: false,
+                schema: new OA\Schema(type: 'string', enum: ['pending', 'approved', 'rejected', 'all']),
+            ),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The requests, possibly none.',
+                content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: '#/components/schemas/Vacation')),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function list(ServerRequestInterface $request): ResponseInterface
     {
         $vacations = ($this->listVacations)(
@@ -64,6 +94,32 @@ readonly class VacationsController
      * @param array{id: int} $params
      * @throws JsonException
      */
+    #[OA\Put(
+        path: '/vacations/{id}/approve',
+        operationId: 'approveVacation',
+        description: 'Manager only. Only a pending request can be approved. The employee is emailed the decision, with the message if one is given.',
+        summary: 'Approve a vacation request',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(ref: '#/components/schemas/DecisionBody'),
+        ),
+        tags: ['Vacation'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/VacationId')],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The request as decided.',
+                content: new OA\JsonContent(ref: '#/components/schemas/Vacation'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function approve(ServerRequestInterface $request, array $params): ResponseInterface
     {
         $message = $this->optionalMessage($request);
@@ -81,6 +137,32 @@ readonly class VacationsController
      * @param array{id: int} $params
      * @throws JsonException
      */
+    #[OA\Put(
+        path: '/vacations/{id}/reject',
+        operationId: 'rejectVacation',
+        description: 'Manager only. Only a pending request can be rejected. The employee is emailed the decision, with the message if one is given.',
+        summary: 'Reject a vacation request',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(ref: '#/components/schemas/DecisionBody'),
+        ),
+        tags: ['Vacation'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/VacationId')],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The request as decided.',
+                content: new OA\JsonContent(ref: '#/components/schemas/Vacation'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function reject(ServerRequestInterface $request, array $params): ResponseInterface
     {
         $message = $this->optionalMessage($request);
@@ -95,6 +177,31 @@ readonly class VacationsController
     /**
      * @throws JsonException
      */
+    #[OA\Post(
+        path: '/vacations',
+        operationId: 'createVacation',
+        description: 'Employee only. The request starts out pending. It cannot start in the past, span more than 60 days, '
+            . 'or overlap another pending or approved request of the same employee (409).',
+        summary: 'Request a vacation',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/CreateVacationBody'),
+        ),
+        tags: ['Vacation'],
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'The new request.',
+                content: new OA\JsonContent(ref: '#/components/schemas/Vacation'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function create(ServerRequestInterface $request): ResponseInterface
     {
         $input = CreateVacationRequest::fromRequest($request);
@@ -112,6 +219,24 @@ readonly class VacationsController
     /**
      * @param array{id: int} $params
      */
+    #[OA\Delete(
+        path: '/vacations/{id}',
+        operationId: 'cancelVacation',
+        description: 'Employee only, and only their own request while it is still pending. '
+            . 'Someone else\'s request is reported as not found, so its existence is not revealed.',
+        summary: 'Cancel a pending vacation request',
+        security: [['BearerAuth' => []]],
+        tags: ['Vacation'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/VacationId')],
+        responses: [
+            new OA\Response(response: 204, description: 'The request was cancelled.'),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function delete(ServerRequestInterface $request, array $params): ResponseInterface
     {
         ($this->cancelVacation)($this->accessControl->principalFromRequest($request), (int) $params['id']);

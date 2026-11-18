@@ -103,6 +103,27 @@ readonly class AuthenticationController
     /**
      * Handle token renewal
      */
+    #[OA\Post(
+        path: '/auth/renew',
+        operationId: 'renewToken',
+        description: 'Exchanges a valid token for a fresh one. The new token carries the person\'s current name, email and role.',
+        summary: 'Renew the token',
+        security: [['BearerAuth' => []]],
+        tags: ['Auth'],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'A fresh token.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'token', type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'),
+                    ],
+                ),
+            ),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function renew(ServerRequestInterface $request): ResponseInterface
     {
         // The middleware has already validated the token and loaded the person as they are now,

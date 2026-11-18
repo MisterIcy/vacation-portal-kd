@@ -28,6 +28,30 @@ readonly class UsersController
     /**
      * @throws JsonException|DateMalformedStringException|ForbiddenException
      */
+    #[OA\Post(
+        path: '/users',
+        operationId: 'createUser',
+        description: 'Manager only.',
+        summary: 'Create a user',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/CreateUserBody'),
+        ),
+        tags: ['User'],
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'The new user.',
+                content: new OA\JsonContent(ref: '#/components/schemas/UserModel'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function create(ServerRequestInterface $request): ResponseInterface
     {
         $this->requireManager($request);
@@ -51,6 +75,24 @@ readonly class UsersController
     /**
      * @throws DateMalformedStringException|ForbiddenException
      */
+    #[OA\Get(
+        path: '/users',
+        operationId: 'listUsers',
+        description: 'Manager only.',
+        summary: 'List all users',
+        security: [['BearerAuth' => []]],
+        tags: ['User'],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Every user.',
+                content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: '#/components/schemas/UserModel')),
+            ),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function list(ServerRequestInterface $request): ResponseInterface
     {
         $this->requireManager($request);
@@ -100,10 +142,12 @@ readonly class UsersController
                 ref: '#/components/responses/400',
                 response: 400,
             ),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
             new OA\Response(
                 ref: '#/components/responses/403',
                 response: 403,
             ),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
             new OA\Response(
                 ref: '#/components/responses/500',
                 response: 500,
@@ -123,6 +167,32 @@ readonly class UsersController
      * @param array{id: int} $params
      * @throws JsonException|DateMalformedStringException|ForbiddenException
      */
+    #[OA\Put(
+        path: '/users/{id}',
+        operationId: 'updateUser',
+        description: 'Manager only. Fields that are not sent stay as they are.',
+        summary: 'Update a user',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/UpdateUserBody'),
+        ),
+        tags: ['User'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/UserId')],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The user as updated.',
+                content: new OA\JsonContent(ref: '#/components/schemas/UserModel'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function update(ServerRequestInterface $request, array $params): ResponseInterface
     {
         $this->requireManager($request);
@@ -158,6 +228,23 @@ readonly class UsersController
      * @param array{id: int} $params
      * @throws ForbiddenException
      */
+    #[OA\Delete(
+        path: '/users/{id}',
+        operationId: 'deleteUser',
+        description: 'Manager only. A manager cannot delete their own account. The user\'s vacation requests are deleted with them.',
+        summary: 'Delete a user',
+        security: [['BearerAuth' => []]],
+        tags: ['User'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/UserId')],
+        responses: [
+            new OA\Response(response: 204, description: 'The user was deleted.'),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function delete(ServerRequestInterface $request, array $params): ResponseInterface
     {
         $this->requireManager($request);

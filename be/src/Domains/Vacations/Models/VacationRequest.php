@@ -12,7 +12,31 @@ use DateTime;
 use DateTimeInterface;
 use InvalidArgumentException;
 use JsonSerializable;
+use OpenApi\Attributes as OA;
 
+#[OA\Schema(
+    schema: 'Vacation',
+    description: 'A vacation request. `user` says who asked and is filled in for a manager\'s list; it is null in an employee\'s own list.',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'id', type: 'integer', example: 7),
+        new OA\Property(property: 'user_id', description: 'The employee who asked.', type: 'integer', example: 42),
+        new OA\Property(
+            property: 'user',
+            description: 'Who asked; null when the list is the employee\'s own.',
+            nullable: true,
+            oneOf: [new OA\Schema(ref: '#/components/schemas/EmployeeSummary')],
+        ),
+        new OA\Property(property: 'from', description: 'First day off (calendar date).', type: 'string', format: 'date', example: '2030-07-01'),
+        new OA\Property(property: 'to', description: 'Last day off, included (calendar date).', type: 'string', format: 'date', example: '2030-07-10'),
+        new OA\Property(property: 'days', description: 'Number of calendar days from `from` to `to`, both included.', type: 'integer', example: 10),
+        new OA\Property(property: 'reason', type: 'string', example: 'Summer holiday'),
+        new OA\Property(property: 'status', ref: '#/components/schemas/VacationStatus'),
+        new OA\Property(property: 'authorized_by', description: 'The manager who decided; null while pending.', type: 'integer', nullable: true, example: null),
+        new OA\Property(property: 'created_at', type: 'string', format: 'date-time', example: '2030-06-01T09:00:00+00:00'),
+        new OA\Property(property: 'updated_at', type: 'string', format: 'date-time', example: '2030-06-01T09:00:00+00:00'),
+    ],
+)]
 readonly class VacationRequest implements JsonSerializable
 {
     private ?int $id;

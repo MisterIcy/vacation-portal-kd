@@ -8,12 +8,24 @@ use App\Domains\Users\Models\UserRole;
 use App\Shared\RequestBody;
 use InvalidArgumentException;
 use JsonException;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * The input for updating a user. Every field is optional and a missing one means
  * "leave unchanged". The employee code cannot be changed, so it is not read.
  */
+#[OA\Schema(
+    schema: 'UpdateUserBody',
+    description: 'Changes to a user. Send only what changes; a blank password keeps the current one. The employee code cannot be changed.',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'email', type: 'string', format: 'email', example: 'john.doe@example.com'),
+        new OA\Property(property: 'password', type: 'string', format: 'password', minLength: 8, example: 'SecureP@ss123'),
+        new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
+        new OA\Property(property: 'role', ref: '#/components/schemas/UserRole', description: 'A manager cannot change their own role.'),
+    ],
+)]
 final readonly class UpdateUserRequest
 {
     private function __construct(

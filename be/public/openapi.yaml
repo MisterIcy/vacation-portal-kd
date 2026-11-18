@@ -1,4 +1,4 @@
-openapi: 3.0.0
+openapi: 3.1.0
 info:
   title: 'Vacation Management API'
   description: 'Vacation management API for streamlining requesting and evaluating vacation requests.'
@@ -36,6 +36,86 @@ paths:
           $ref: '#/components/responses/401'
         '500':
           $ref: '#/components/responses/500'
+  /auth/renew:
+    post:
+      tags:
+        - Auth
+      summary: 'Renew the token'
+      description: "Exchanges a valid token for a fresh one. The new token carries the person's current name, email and role."
+      operationId: renewToken
+      responses:
+        '200':
+          description: 'A fresh token.'
+          content:
+            application/json:
+              schema:
+                properties:
+                  token: { type: string, example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... }
+                type: object
+        '401':
+          $ref: '#/components/responses/401'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+  /users:
+    get:
+      tags:
+        - User
+      summary: 'List all users'
+      description: 'Manager only.'
+      operationId: listUsers
+      responses:
+        '200':
+          description: 'Every user.'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserModel'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+    post:
+      tags:
+        - User
+      summary: 'Create a user'
+      description: 'Manager only.'
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserBody'
+      responses:
+        '201':
+          description: 'The new user.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
   '/users/{id}':
     get:
       tags:
@@ -61,8 +141,246 @@ paths:
                 $ref: '#/components/schemas/UserModel'
         '400':
           $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
         '403':
           $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+    put:
+      tags:
+        - User
+      summary: 'Update a user'
+      description: 'Manager only. Fields that are not sent stay as they are.'
+      operationId: updateUser
+      parameters:
+        -
+          $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserBody'
+      responses:
+        '200':
+          description: 'The user as updated.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserModel'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+    delete:
+      tags:
+        - User
+      summary: 'Delete a user'
+      description: "Manager only. A manager cannot delete their own account. The user's vacation requests are deleted with them."
+      operationId: deleteUser
+      parameters:
+        -
+          $ref: '#/components/parameters/UserId'
+      responses:
+        '204':
+          description: 'The user was deleted.'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+  /vacations:
+    get:
+      tags:
+        - Vacation
+      summary: 'List vacation requests'
+      description: 'A manager gets the requests of all employees (with who asked), by default only those waiting for a decision. An employee gets only their own requests, by default of every status. Pending requests are ordered by start date, earliest first; other lists, newest first.'
+      operationId: listVacations
+      parameters:
+        -
+          name: status
+          in: query
+          description: 'Narrow the list to one status, or `all`.'
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+              - approved
+              - rejected
+              - all
+      responses:
+        '200':
+          description: 'The requests, possibly none.'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Vacation'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+    post:
+      tags:
+        - Vacation
+      summary: 'Request a vacation'
+      description: 'Employee only. The request starts out pending. It cannot start in the past, span more than 60 days, or overlap another pending or approved request of the same employee (409).'
+      operationId: createVacation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVacationBody'
+      responses:
+        '201':
+          description: 'The new request.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacation'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+  '/vacations/{id}/approve':
+    put:
+      tags:
+        - Vacation
+      summary: 'Approve a vacation request'
+      description: 'Manager only. Only a pending request can be approved. The employee is emailed the decision, with the message if one is given.'
+      operationId: approveVacation
+      parameters:
+        -
+          $ref: '#/components/parameters/VacationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionBody'
+      responses:
+        '200':
+          description: 'The request as decided.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacation'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+  '/vacations/{id}/reject':
+    put:
+      tags:
+        - Vacation
+      summary: 'Reject a vacation request'
+      description: 'Manager only. Only a pending request can be rejected. The employee is emailed the decision, with the message if one is given.'
+      operationId: rejectVacation
+      parameters:
+        -
+          $ref: '#/components/parameters/VacationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionBody'
+      responses:
+        '200':
+          description: 'The request as decided.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vacation'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
+      security:
+        -
+          BearerAuth: []
+  '/vacations/{id}':
+    delete:
+      tags:
+        - Vacation
+      summary: 'Cancel a pending vacation request'
+      description: "Employee only, and only their own request while it is still pending. Someone else's request is reported as not found, so its existence is not revealed."
+      operationId: cancelVacation
+      parameters:
+        -
+          $ref: '#/components/parameters/VacationId'
+      responses:
+        '204':
+          description: 'The request was cancelled.'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
         '500':
           $ref: '#/components/responses/500'
       security:
@@ -70,6 +388,15 @@ paths:
           BearerAuth: []
 components:
   schemas:
+    DecisionBody:
+      description: 'Optional body of an approval or rejection.'
+      properties:
+        message:
+          description: 'A note for the employee, included in the email about the decision.'
+          type: string
+          maxLength: 500
+          example: 'Enjoy your trip.'
+      type: object
     LoginRequest:
       title: LoginRequest
       description: 'Data structure for user authentication.'
@@ -92,7 +419,6 @@ components:
           description: "The user's unique identifier"
           type: integer
           example: '42'
-          nullable: false
         email:
           description: "The user's email address"
           type: string
@@ -107,18 +433,17 @@ components:
           example: '1234567'
         role:
           $ref: '#/components/schemas/UserRole'
+          description: "The user's role"
         created_at:
           description: 'Date and time when the user was created'
           type: string
           format: date-time
           example: '2024-01-15T10:00:00Z'
-          nullable: false
         updated_at:
           description: 'Date and time when the user was last updated'
           type: string
           format: date-time
           example: '2024-01-15T10:00:00Z'
-          nullable: false
       type: object
     UserRole:
       description: "The user's role"
@@ -127,6 +452,158 @@ components:
         - manager
         - employee
       example: manager
+    CreateUserBody:
+      description: 'A new user. The email and the employee code must not be in use yet.'
+      required:
+        - email
+        - password
+        - name
+        - employee_code
+      properties:
+        email:
+          description: "The input for creating a user, validated for shape. The values themselves\n(email format, password length, 7-digit employee code) are checked by UserModel."
+          type: string
+          format: email
+          example: john.doe@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SecureP@ss123
+        name:
+          type: string
+          example: 'John Doe'
+        employee_code:
+          description: 'Seven digits.'
+          type: string
+          pattern: '^\d{7}$'
+          example: '1234567'
+        role:
+          $ref: '#/components/schemas/UserRole'
+          description: 'Defaults to employee.'
+      type: object
+    UpdateUserBody:
+      description: 'Changes to a user. Send only what changes; a blank password keeps the current one. The employee code cannot be changed.'
+      properties:
+        email:
+          description: "The input for updating a user. Every field is optional and a missing one means\n\"leave unchanged\". The employee code cannot be changed, so it is not read."
+          type: string
+          format: email
+          example: john.doe@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SecureP@ss123
+        name:
+          type: string
+          example: 'John Doe'
+        role:
+          $ref: '#/components/schemas/UserRole'
+          description: 'A manager cannot change their own role.'
+      type: object
+    EmployeeSummary:
+      description: 'The employee who made a vacation request.'
+      properties:
+        id:
+          description: "What the vacation context needs to know about the employee who made a request: enough\nto show a manager who is asking. It deliberately is not the Users domain's own model,\nso leave management does not depend on how user accounts are represented."
+          type: integer
+          example: 42
+        name:
+          type: string
+          example: 'John Doe'
+        email:
+          type: string
+          example: john.doe@example.com
+        employee_code:
+          type: string
+          example: '1234567'
+        role:
+          type: string
+          example: employee
+      type: object
+    Vacation:
+      description: "A vacation request. `user` says who asked and is filled in for a manager's list; it is null in an employee's own list."
+      properties:
+        id:
+          type: integer
+          example: 7
+        user_id:
+          description: 'The employee who asked.'
+          type: integer
+          example: 42
+        user:
+          description: "Who asked; null when the list is the employee's own."
+          oneOf:
+            -
+              $ref: '#/components/schemas/EmployeeSummary'
+            -
+              type: 'null'
+        from:
+          description: 'First day off (calendar date).'
+          type: string
+          format: date
+          example: '2030-07-01'
+        to:
+          description: 'Last day off, included (calendar date).'
+          type: string
+          format: date
+          example: '2030-07-10'
+        days:
+          description: 'Number of calendar days from `from` to `to`, both included.'
+          type: integer
+          example: 10
+        reason:
+          type: string
+          example: 'Summer holiday'
+        status:
+          $ref: '#/components/schemas/VacationStatus'
+        authorized_by:
+          description: 'The manager who decided; null while pending.'
+          type:
+            - integer
+            - 'null'
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: '2030-06-01T09:00:00+00:00'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2030-06-01T09:00:00+00:00'
+      type: object
+    VacationStatus:
+      description: 'Where a vacation request is in its life: new requests are pending until a manager decides.'
+      type: string
+      enum:
+        - pending
+        - approved
+        - rejected
+      example: pending
+    CreateVacationBody:
+      description: "A new vacation request. It must start today or later, span at most 60 days, and not overlap one of the employee's pending or approved requests."
+      required:
+        - from
+        - to
+        - reason
+      properties:
+        from:
+          description: 'First day off.'
+          type: string
+          format: date
+          example: '2030-07-01'
+        to:
+          description: 'Last day off, included. Not before `from`.'
+          type: string
+          format: date
+          example: '2030-07-10'
+        reason:
+          type: string
+          maxLength: 255
+          minLength: 1
+          example: 'Summer holiday'
+      type: object
     JsonErrorResponse:
       title: 'JSON API Error Response'
       description: 'A standard error object returned by the API for 4xx and 5xx status codes.'
@@ -142,19 +619,31 @@ components:
       type: object
   responses:
     '400':
-      description: 'Bad Request.'
+      description: 'Bad Request. The input is malformed or breaks a rule; the message says which.'
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/JsonErrorResponse'
     '401':
-      description: Unauthorized.
+      description: 'Unauthorized. The token is missing, invalid or expired, or the account no longer exists.'
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/JsonErrorResponse'
     '403':
-      description: Forbidden.
+      description: "Forbidden. The caller's role does not allow this."
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JsonErrorResponse'
+    '404':
+      description: 'Not Found. There is no such resource.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JsonErrorResponse'
+    '409':
+      description: 'Conflict. The request clashes with the current state, for example it was already decided or a value is already taken.'
       content:
         application/json:
           schema:
@@ -165,6 +654,23 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/JsonErrorResponse'
+  parameters:
+    UserId:
+      name: id
+      in: path
+      description: 'The unique ID of the user.'
+      required: true
+      schema:
+        type: integer
+        example: 42
+    VacationId:
+      name: id
+      in: path
+      description: 'The unique ID of the vacation request.'
+      required: true
+      schema:
+        type: integer
+        example: 7
   securitySchemes:
     BearerAuth:
       type: http
@@ -178,3 +684,6 @@ tags:
   -
     name: User
     description: User
+  -
+    name: Vacation
+    description: Vacation

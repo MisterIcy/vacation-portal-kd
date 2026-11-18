@@ -8,12 +8,26 @@ use App\Domains\Users\Models\UserRole;
 use App\Shared\RequestBody;
 use InvalidArgumentException;
 use JsonException;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * The input for creating a user, validated for shape. The values themselves
  * (email format, password length, 7-digit employee code) are checked by UserModel.
  */
+#[OA\Schema(
+    schema: 'CreateUserBody',
+    description: 'A new user. The email and the employee code must not be in use yet.',
+    type: 'object',
+    required: ['email', 'password', 'name', 'employee_code'],
+    properties: [
+        new OA\Property(property: 'email', type: 'string', format: 'email', example: 'john.doe@example.com'),
+        new OA\Property(property: 'password', type: 'string', format: 'password', minLength: 8, example: 'SecureP@ss123'),
+        new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
+        new OA\Property(property: 'employee_code', description: 'Seven digits.', type: 'string', pattern: '^\d{7}$', example: '1234567'),
+        new OA\Property(property: 'role', ref: '#/components/schemas/UserRole', description: 'Defaults to employee.'),
+    ],
+)]
 final readonly class CreateUserRequest
 {
     private function __construct(
