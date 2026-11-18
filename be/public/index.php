@@ -10,6 +10,18 @@ use App\Shared\Clock;
 use App\Shared\Configuration;
 use App\Shared\ConfigurationError;
 use App\Shared\ErrorHandlingMiddleware;
+use App\Shared\ErrorLogLogger;
+use App\Shared\Events\EventDispatcher;
+use App\Shared\Events\SynchronousEventDispatcher;
+use App\Shared\Events\VacationApprovedEvent;
+use App\Shared\Events\VacationRejectedEvent;
+use App\Shared\Logger;
+use App\Shared\Notifications\EmailNotificationService;
+use App\Shared\Notifications\FileEmailTransport;
+use App\Shared\Notifications\NotificationService;
+use App\Shared\Notifications\RetryingNotificationService;
+use App\Shared\Notifications\SendVacationApprovedNotificationHandler;
+use App\Shared\Notifications\SendVacationRejectedNotificationHandler;
 use App\Shared\PasswordHasherArgon2id;
 use App\Shared\Ports\PasswordHasher;
 use App\Shared\SecurityHeadersMiddleware;
@@ -83,6 +95,39 @@ $container->add(AuthenticationService::class, function () {
     return new AuthenticationService(
         $_ENV['JWT_SECRET'],
     );
+});
+
+$container->addShared(Logger::class, ErrorLogLogger::class);
+
+// Notifications: an email per decision, written to a file instead of sent (no mail provider is needed),
+// and tried again a few times when writing fails. NOTIFICATIONS_DIR and MAIL_FROM are optional. The default
+// is the system temp directory: the local hardening overlay mounts be/ read-only, and it is writable everywhere.
+$container->addShared(NotificationService::class, function () use ($container) {
+    $directory = $_ENV['NOTIFICATIONS_DIR'] ?? '';
+    $from = $_ENV['MAIL_FROM'] ?? '';
+
+    return new RetryingNotificationService(
+        new EmailNotificationService(new FileEmailTransport(
+            is_string($directory) && $directory !== '' ? $directory : sys_get_temp_dir() . '/vacation-portal/notifications',
+            is_string($from) && $from !== '' ? $from : 'Vacation Portal <no-reply@vacation-portal.local>',
+        )),
+        $container->get(Logger::class),
+    );
+});
+
+// Events: which handler reacts to which event. Handlers are built when an event arrives, not at start-up.
+$container->addShared(EventDispatcher::class, function () use ($container) {
+    $dispatcher = new SynchronousEventDispatcher($container->get(Logger::class));
+    $dispatcher->listen(
+        VacationApprovedEvent::class,
+        fn (VacationApprovedEvent $event) => $container->get(SendVacationApprovedNotificationHandler::class)($event),
+    );
+    $dispatcher->listen(
+        VacationRejectedEvent::class,
+        fn (VacationRejectedEvent $event) => $container->get(SendVacationRejectedNotificationHandler::class)($event),
+    );
+
+    return $dispatcher;
 });
 
 // Add the router to the container

@@ -30,6 +30,11 @@ final readonly class EmployeeSummary
         return $this->name;
     }
 
+    public function getEmail(): string
+    {
+        return $this->email;
+    }
+
     /**
      * @return array{id: int, name: string, email: string, employee_code: string, role: string}
      */

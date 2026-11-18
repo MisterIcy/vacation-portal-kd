@@ -113,7 +113,8 @@ class VacationsRepositoryTest extends TestCase
         $dbMock->expects($this->once())
             ->method('query')
             ->with(
-                $this->equalTo('SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE id = :id'),
+                $this->callback(fn (string $sql) => str_contains($sql, 'u.email AS employee_email')
+                    && str_ends_with($sql, 'FROM vacations v INNER JOIN users u ON v.user_id = u.id WHERE v.id = :id')),
                 ['id' => $expectedId]
             )
             ->willReturn([
@@ -127,10 +128,17 @@ class VacationsRepositoryTest extends TestCase
                     'authorized_by' => $expectedAuthorizedBy,
                     'created_at' => $expectedCreatedAt,
                     'updated_at' => $expectedUpdatedAt,
+                    'employee_name' => 'Ada Lovelace',
+                    'employee_email' => 'ada@example.com',
+                    'employee_code' => '1234567',
+                    'employee_role' => 'employee',
                 ]
             ]);
 
         $vacation = $repo->findById($expectedId);
+
+        $this->assertSame('ada@example.com', $vacation->getEmployee()?->getEmail());
+        $this->assertSame('Ada Lovelace', $vacation->getEmployee()->getName());
 
         $this->assertSame($expectedId, $vacation->getId());
         $this->assertSame($expectedUserId, $vacation->getUserId());

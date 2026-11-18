@@ -6,12 +6,17 @@ namespace Tests\Unit\Domains\Vacations\Controllers;
 
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Controllers\VacationsController;
+use App\Domains\Vacations\Models\EmployeeSummary;
 use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Services\CancelVacation;
 use App\Domains\Vacations\Services\DecideVacation;
 use App\Domains\Vacations\Services\ListVacations;
 use App\Domains\Vacations\Services\RequestVacation;
 use App\Shared\AccessDenied;
+use App\Shared\Events\EventDispatcher;
+use App\Shared\Events\VacationApprovedEvent;
+use App\Shared\Events\VacationRejectedEvent;
+use App\Shared\Notifications\VacationDecision;
 use App\Shared\ModelCollection;
 use App\Shared\Principal;
 use DateTime;
@@ -38,6 +43,8 @@ class VacationsControllerTest extends TestCase
     private DecideVacation $decideVacation;
     /** @var CancelVacation&MockObject */
     private CancelVacation $cancelVacation;
+    /** @var EventDispatcher&MockObject */
+    private EventDispatcher $events;
     private ServerRequest $request;
 
     protected function setUp(): void
@@ -47,6 +54,7 @@ class VacationsControllerTest extends TestCase
         $this->requestVacation = $this->createMock(RequestVacation::class);
         $this->decideVacation = $this->createMock(DecideVacation::class);
         $this->cancelVacation = $this->createMock(CancelVacation::class);
+        $this->events = $this->createMock(EventDispatcher::class);
         $this->request = new ServerRequest();
     }
 
@@ -128,6 +136,99 @@ class VacationsControllerTest extends TestCase
         $this->controller()->approve($this->request, ['id' => 5]);
     }
 
+    // ---- Notifications ----------------------------------------------------------------------
+
+    public function testApprovingDispatchesAnApprovedEventForTheEmployee(): void
+    {
+        $this->decideVacation->method('approve')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->callback(function ($event) {
+            $n = $event instanceof VacationApprovedEvent ? $event->notification : null;
+
+            return $n !== null
+                && $n->decision === VacationDecision::Approved
+                && $n->recipientId === 2
+                && $n->recipientName === 'Ada Lovelace'
+                && $n->recipientEmail === 'ada@example.com'
+                && $n->vacationId === 5
+                && $n->from->format('Y-m-d') === '2026-07-01'
+                && $n->to->format('Y-m-d') === '2026-07-03'
+                && $n->days === 3
+                && $n->reason === 'Holiday'
+                && $n->message === null;
+        }));
+
+        $this->assertSame(200, $this->controller()->approve($this->request, ['id' => 5])->getStatusCode());
+    }
+
+    public function testRejectingDispatchesARejectedEvent(): void
+    {
+        $this->decideVacation->method('reject')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->isInstanceOf(VacationRejectedEvent::class));
+
+        $this->assertSame(200, $this->controller()->reject($this->request, ['id' => 5])->getStatusCode());
+    }
+
+    public function testTheManagersMessageTravelsInTheEvent(): void
+    {
+        $this->decideVacation->method('reject')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->callback(
+            fn ($event) => $event instanceof VacationRejectedEvent && $event->notification->message === 'Team is short that week.'
+        ));
+
+        $this->controller()->reject($this->withBody('{"message":"Team is short that week."}'), ['id' => 5]);
+    }
+
+    public function testNothingIsDispatchedWhenTheDecisionFails(): void
+    {
+        $this->decideVacation->method('approve')->willThrowException(AccessDenied::forRole());
+        $this->events->expects($this->never())->method('dispatch');
+
+        $this->expectException(AccessDenied::class);
+
+        $this->controller()->approve($this->request, ['id' => 5]);
+    }
+
+    public function testATooLongMessageIsRefusedBeforeAnythingIsDecided(): void
+    {
+        $this->decideVacation->expects($this->never())->method('approve');
+        $this->events->expects($this->never())->method('dispatch');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'message' must be at most 500 characters.");
+
+        $this->controller()->approve($this->withBody('{"message":"' . str_repeat('x', 501) . '"}'), ['id' => 5]);
+    }
+
+    public function testAMessageThatIsNotAStringIsRefusedBeforeAnythingIsDecided(): void
+    {
+        $this->decideVacation->expects($this->never())->method('reject');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'message' must be a string.");
+
+        $this->controller()->reject($this->withBody('{"message":42}'), ['id' => 5]);
+    }
+
+    public function testARequestWithoutAnEmployeeAttachedIsDecidedButNobodyIsNotified(): void
+    {
+        $this->decideVacation->method('approve')->willReturn($this->vacation());
+        $this->events->expects($this->never())->method('dispatch');
+
+        $this->assertSame(200, $this->controller()->approve($this->request, ['id' => 5])->getStatusCode());
+    }
+
+    private function decidedVacation(): VacationRequest
+    {
+        return new VacationRequest(
+            5,
+            2,
+            new EmployeeSummary(2, 'Ada Lovelace', 'ada@example.com', '1234567', 'employee'),
+            new DateTime('2026-07-01'),
+            new DateTime('2026-07-03'),
+            'Holiday',
+        );
+    }
+
     private function controller(): VacationsController
     {
         $accessControl = $this->createMock(AccessControlService::class);
@@ -139,6 +240,7 @@ class VacationsControllerTest extends TestCase
             $this->requestVacation,
             $this->decideVacation,
             $this->cancelVacation,
+            $this->events,
         );
     }
 

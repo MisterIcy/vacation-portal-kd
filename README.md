@@ -158,6 +158,17 @@ A `JWT_SECRET` that is the placeholder from `.env.example`, or shorter than 32
 bytes, only logs a warning while developing, but stops the application when
 `APP_ENV=production` is set. Generate a real one with `openssl rand -base64 48`.
 
+**Decision notifications:** when a manager approves or rejects a request, the
+employee is notified by email. No mail provider is used: each email is written
+as its own `.eml` file, by default in `<system temp dir>/vacation-portal/notifications`
+(inside the container: `docker exec vacation_be ls /tmp/vacation-portal/notifications`).
+Set `NOTIFICATIONS_DIR` to use another directory and `MAIL_FROM` to change the
+sender. The `PUT /vacations/{id}/approve` and `/reject` calls accept an optional
+JSON body `{"message": "..."}` (up to 500 characters) that is included in the
+email. A failed write is retried up to three times and then logged; it never
+changes the manager's response, because the decision is already stored. In
+production the same events would feed an outbox and a real provider.
+
 **Database users:** the application and the migrations should not share one
 account. The migrations need to change the schema; the application only needs
 to read and write rows, so that a flaw such as a SQL injection could not drop

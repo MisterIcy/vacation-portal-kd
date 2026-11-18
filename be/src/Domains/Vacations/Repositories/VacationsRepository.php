@@ -108,7 +108,10 @@ readonly class VacationsRepository implements VacationRequestRepository
      */
     public function findById(int $id): VacationRequest
     {
-        $sql = "SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE id = :id";
+        // The employee comes with the request: a decision has to tell them, and that needs their name and email.
+        $sql = "SELECT v.id, v.user_id, v.`from`, v.`to`, v.reason, v.status, v.authorized_by, v.created_at, v.updated_at,
+            u.name AS employee_name, u.email AS employee_email, u.employee_code, u.role AS employee_role
+            FROM vacations v INNER JOIN users u ON v.user_id = u.id WHERE v.id = :id";
 
         $row = $this->db->query($sql, ['id' => $id]);
 
@@ -116,7 +119,7 @@ readonly class VacationsRepository implements VacationRequestRepository
             throw new NotFound("Vacation with ID $id not found.");
         }
 
-        return $this->mapToVacationRequest($row[0]);
+        return self::mapToVacationRequest($row[0], self::mapToEmployeeSummary($row[0]));
     }
 
     /**
