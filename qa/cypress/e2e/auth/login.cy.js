@@ -58,6 +58,20 @@ describe('Authentication › Logging in and out', () => {
     cy.get('@login.all').should('have.length', 0);
   });
 
+  [
+    ['an email that is a list', { email: [], password: 'x' }],
+    ['a password that is an object', { email: 'a@b.c', password: { x: 1 } }],
+    ['an email that is a number', { email: 123, password: 'x' }],
+    ['no password', { email: 'a@b.c' }],
+  ].forEach(([label, body]) => {
+    it(`AUTH-09 ${label} is a 400 from the API, never a server error`, () => {
+      cy.request({ method: 'POST', url: '/api/auth/login', body, failOnStatusCode: false }).then((response) => {
+        expect(response.status).to.eq(400);
+        expect(response.body).to.have.all.keys('status_code', 'reason_phrase');
+      });
+    });
+  });
+
   it('AUTH-05 signing out clears the session and protected pages need a new login', () => {
     cy.loginByToken('employee', '/dashboard');
 

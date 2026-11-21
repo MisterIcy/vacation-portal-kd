@@ -400,6 +400,9 @@ components:
     LoginRequest:
       title: LoginRequest
       description: 'Data structure for user authentication.'
+      required:
+        - email
+        - password
       properties:
         email:
           description: "The user's email address"
