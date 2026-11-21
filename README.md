@@ -136,10 +136,12 @@ The assignment leaves several things open. These are the choices made, in plain 
 |---|---|
 | **One authentication path.** A middleware reads the token once, loads the user from the database on every request and hands it to the controller. | Roles come from the database, not from the token, so a deleted or demoted person loses access immediately instead of when their token expires. Controllers no longer each repeat the check. Costs one primary-key lookup per request. |
 | **Every error has the same shape and a meaningful status:** 400 invalid input, 401 not signed in, 403 wrong role, 404 not found, 409 conflict with the current state, 500 unexpected (with a generic message). The body is always `{"status_code", "reason_phrase"}`. | The UI can show the server's own message, and the API describes itself. |
-| **Input is checked before it reaches a model or the database** (request classes per write endpoint). | No bad input becomes a 500, and the rules are in one place. |
+| **Input is checked before it reaches a model or the database** (request classes per write endpoint). | No bad input becomes a 500, and the rules are in one place. This includes the login request: a field of the wrong type is a 400, never a server error. |
+| **Text is checked for control characters.** A name must be one line. A reason or a manager's message may run over several lines (the form is a text area), but may not contain other control characters such as NUL or escape codes. | Line breaks inside a name or a note change what a list, a log or an email says. Refusing them at the door is simpler than escaping them everywhere. |
 | **Dates are calendar days end to end** (`"2030-07-01"`), and the number of days is computed by the server (both ends included). | Avoids the classic time-zone off-by-one where a date shifts a day for some viewers. |
 | **Rules for a new request:** it may not start in the past, may span at most 60 days, and may not overlap another pending or approved request of the same employee. A single day is allowed. | The assignment is silent on these; they are the behaviour an HR tool needs. MySQL has no exclusion constraint, so the overlap check runs in a transaction that first locks the employee's row; two simultaneous submissions are handled one after the other. |
 | **A decision is a conditional write** (`UPDATE ... WHERE status = 'pending'`). | Two managers cannot both decide one request: the second gets a 409 and the stored result is unchanged. |
+| **Nobody decides on their own request**, whatever their role is today (403). | A person can be promoted to manager while a request of theirs is still waiting. Separating who asks from who decides is the point of the approval step, so the rule is about who made the request, not about the role. Another manager can still decide it. |
 | **Cancelling someone else's request answers 404**, the same as for a request that does not exist. | It does not reveal which ids are in use. |
 | **Domain-driven design where it pays.** The vacation context has real behaviour (a request that knows when it can be decided or cancelled, a date range value object, a policy, use cases and a repository interface). Users stays plain CRUD and authentication stays thin. | Matches the effort to where the rules are. The rules can be unit-tested without a database. |
 | **Notifications.** A manager sees a badge with the number of pending requests in the navigation (refreshed every minute and when the window regains focus). The employee is emailed when their request is approved or rejected (see below). | "Notify" needs no infrastructure this way. A queue and a real mail provider are the production path. |
@@ -149,7 +151,7 @@ The assignment leaves several things open. These are the choices made, in plain 
 **Assumptions where the assignment is silent**
 
 - A manager can create other managers (the role is chosen when creating a user). Roles are not editable in the UI, and a manager cannot change their own role or delete their own account.
-- Managers decide on requests; they do not make or cancel them (403).
+- Managers decide on requests; they do not make or cancel them (403), and a manager never decides on a request they made themselves before being promoted (403).
 - A rejected request frees its days again; approved and pending ones block them.
 - "All associated data is deleted" means a deleted user's vacation requests are deleted with them. Requests that user had *decided* stay, with the decider cleared.
 
@@ -275,8 +277,9 @@ as its own `.eml` file, by default in `<system temp dir>/vacation-portal/notific
 (inside the container: `docker exec vacation_be ls /tmp/vacation-portal/notifications`).
 Set `NOTIFICATIONS_DIR` to use another directory and `MAIL_FROM` to change the
 sender. The `PUT /vacations/{id}/approve` and `/reject` calls accept an optional
-JSON body `{"message": "..."}` (up to 500 characters) that is included in the
-email. A failed write is retried up to three times and then logged; it never
+JSON body `{"message": "..."}` (up to 500 characters, several lines allowed) that is included in the
+email. Anything a person wrote (the reason, the message) is indented after its first line, so a line
+inside it can never pass for a label the system wrote, such as "Message from your manager:". A failed write is retried up to three times and then logged; it never
 changes the manager's response, because the decision is already stored. In
 production the same events would feed an outbox and a real provider.
 
