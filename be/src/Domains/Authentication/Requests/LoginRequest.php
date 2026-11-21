@@ -27,7 +27,7 @@ class LoginRequest
     #[OA\Property(
         description: 'The user\'s password (at most 1024 bytes)',
         format: 'password',
-        example: 'SecureP@ss123',
+        example: 'your-password-here',
     )]
     private string $password;
 

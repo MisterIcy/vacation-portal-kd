@@ -412,7 +412,7 @@ components:
           description: "The user's password (at most 1024 bytes)"
           type: string
           format: password
-          example: SecureP@ss123
+          example: your-password-here
       type: object
     UserModel:
       title: UserModel
@@ -473,7 +473,7 @@ components:
           type: string
           format: password
           minLength: 8
-          example: SecureP@ss123
+          example: your-password-here
         name:
           type: string
           example: 'John Doe'
@@ -499,7 +499,7 @@ components:
           type: string
           format: password
           minLength: 8
-          example: SecureP@ss123
+          example: your-password-here
         name:
           type: string
           example: 'John Doe'
