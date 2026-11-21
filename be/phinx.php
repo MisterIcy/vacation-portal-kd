@@ -30,7 +30,10 @@ return
             'testing' => [
                 'adapter' => 'mysql',
                 'host' => $_ENV['TEST_DB_HOST'] ?? getenv('TEST_DB_HOST') ?: 'localhost',
-                'name' => $_ENV['TEST_DB_DATABASE'] ?? getenv('TEST_DB_DATABASE') ?: 'vacation_test',
+                // `db:verify-migrations` rolls this database back completely, so it must be a test database.
+                'name' => App\Shared\TestDatabaseName::assertSafe(
+                    $_ENV['TEST_DB_DATABASE'] ?? getenv('TEST_DB_DATABASE') ?: App\Shared\TestDatabaseName::DEFAULT,
+                ),
                 'user' => $_ENV['TEST_DB_USERNAME'] ?? getenv('TEST_DB_USERNAME') ?: 'vacation_test',
                 'pass' => $_ENV['TEST_DB_PASSWORD'] ?? getenv('TEST_DB_PASSWORD') ?: '',
                 'port' => $_ENV['TEST_DB_PORT'] ?? getenv('TEST_DB_PORT') ?: '3306',

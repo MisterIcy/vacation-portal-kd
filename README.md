@@ -173,7 +173,7 @@ The assignment leaves several things open. These are the choices made, in plain 
 | Frontend (Vitest, Testing Library, ESLint, `tsc`) | Components, pages, who can open which route, the session and the API client. Coverage thresholds are enforced in `fe/vitest.config.ts` | `./run check-fe` |
 | End to end (Cypress) | The journeys of both roles through the UI, plus an API-level table of who may call what | `./run check-qa` (the app must be running) |
 
-**Integration tests.** They need their own throwaway MySQL, so they can never touch the development data. The test base class also refuses a database whose name does not contain `test`. Without `TEST_DB_HOST` set they are skipped; set `REQUIRE_INTEGRATION_TESTS=1` to make a missing database a failure instead.
+**Integration tests.** They need their own throwaway MySQL, so they can never touch the development data. The test tooling (the integration test base class and the Phinx `testing` environment) refuses a database whose name does not contain the word `test`, for example `vacation_test`. Without `TEST_DB_HOST` set they are skipped; set `REQUIRE_INTEGRATION_TESTS=1` to make a missing database a failure instead.
 
 ```sh
 # 1. A disposable MySQL in memory, on the same network as the stack (start it first with ./run start)

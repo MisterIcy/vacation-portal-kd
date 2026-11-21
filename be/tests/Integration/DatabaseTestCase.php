@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Integration;
 
 use App\Shared\Database;
+use App\Shared\TestDatabaseName;
+use InvalidArgumentException;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\TestCase;
@@ -37,10 +39,11 @@ abstract class DatabaseTestCase extends TestCase
             $this->databaseNotConfigured('TEST_DB_HOST is not set, so there is no database to run against.');
         }
 
-        $name = $this->setting('TEST_DB_DATABASE', 'vacation_test');
         // These tests write and roll back; make it impossible to point them at real data by mistake.
-        if (!str_contains($name, 'test')) {
-            $this->fail("Refusing to run against the database '$name': the name of a test database must contain 'test'.");
+        try {
+            $name = TestDatabaseName::assertSafe($this->setting('TEST_DB_DATABASE', TestDatabaseName::DEFAULT));
+        } catch (InvalidArgumentException $e) {
+            $this->fail($e->getMessage());
         }
 
         try {
