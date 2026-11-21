@@ -1,3 +1,8 @@
+# Every body this API accepts is a small JSON object (the largest legitimate one is a few kilobytes).
+# Refusing anything bigger here, before PHP reads it, stops a huge request from costing memory or,
+# on the login endpoint, hashing time. Apache answers 413.
+LimitRequestBody 16384
+
 RewriteEngine On
 # If the requested file or directory exists, serve it directly
 RewriteCond %{REQUEST_FILENAME} -f [OR]

@@ -71,6 +71,18 @@ export const createVacationStyles = (theme: Theme) => css`
     box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.1);
   }
 
+  .create-vacation__counter {
+    align-self: flex-end;
+    color: ${theme.colors.text.secondary};
+    font-size: ${theme.fontSize.sm};
+  }
+
+  .create-vacation__total-days {
+    margin: 0;
+    color: ${theme.colors.text.primary};
+    font-weight: 600;
+  }
+
   .create-vacation__button-group {
     display: flex;
     gap: 1rem;

@@ -60,7 +60,17 @@ Configures the test environment:
 Provides custom render function with providers:
 - Wraps components with BrowserRouter
 - Wraps components with ThemeProvider
+- Wraps components with a fresh React Query client per render (no retries, no cache reuse)
 - Supports initial route configuration
+- Supports an `authUser` option for components that read the auth context (anything wrapped in `Layout`); pass `null` to render signed out. Omit it and no auth provider is added
+
+To test a page, mock its API module and render it with a signed-in user (see `src/views/UserList/UserList.test.tsx`):
+```typescript
+vi.mock('@domains/users/api', () => ({ getUsers: vi.fn(), deleteUser: vi.fn() }));
+vi.mocked(getUsers).mockResolvedValue([user]);
+render(<UserList />, { authUser: manager });
+expect(await screen.findByText('Jane Doe')).toBeInTheDocument();
+```
 
 Usage:
 ```typescript

@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@emotion/react';
 import { login as loginApi } from '@domains/auth/api';
 import { useAuth } from '@hooks/useAuth';
+import { ErrorMessage } from '@components/ErrorMessage';
+import { getApiErrorMessage } from '@utils/apiError';
 import type { Theme } from '@styles/theme';
 import { loginStyles } from './Login.styles';
 
@@ -64,9 +66,10 @@ export const LoginPage = () => {
         </div>
 
         {mutation.isError && (
-          <div className="login__error-message">
-            Login failed. Please check your credentials.
-          </div>
+          <ErrorMessage
+            className="login__error-message"
+            message={getApiErrorMessage(mutation.error, 'Login failed. Please check your credentials.')}
+          />
         )}
 
         <button

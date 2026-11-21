@@ -1,8 +1,12 @@
 import api from '@api/axios';
-import type { Vacation, CreateVacationRequest } from './types';
+import type { Vacation, CreateVacationRequest, VacationStatusFilter } from './types';
 
-export const getVacations = async (): Promise<Vacation[]> => {
-  const { data } = await api.get<Vacation[]>('/vacations');
+/**
+ * Without a status the server answers by role: a manager gets the requests waiting for a
+ * decision, an employee gets all of their own.
+ */
+export const getVacations = async (status?: VacationStatusFilter): Promise<Vacation[]> => {
+  const { data } = await api.get<Vacation[]>('/vacations', status ? { params: { status } } : undefined);
   return data;
 };
 

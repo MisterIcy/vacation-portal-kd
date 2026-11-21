@@ -2,18 +2,59 @@
 
 declare(strict_types=1);
 
+use App\Domains\Authentication\Middleware\AuthenticationMiddleware;
 use App\Domains\Authentication\Services\AuthenticationService;
+use App\Domains\Vacations\Repositories\VacationRequestRepository;
+use App\Domains\Vacations\Repositories\VacationsRepository;
+use App\Shared\Clock;
+use App\Shared\Configuration;
+use App\Shared\ConfigurationError;
+use App\Shared\Environment;
 use App\Shared\ErrorHandlingMiddleware;
+use App\Shared\ErrorLogLogger;
+use App\Shared\Events\EventDispatcher;
+use App\Shared\Events\SynchronousEventDispatcher;
+use App\Shared\Events\VacationApprovedEvent;
+use App\Shared\Events\VacationRejectedEvent;
+use App\Shared\Logger;
+use App\Shared\Notifications\EmailNotificationService;
+use App\Shared\Notifications\FileEmailTransport;
+use App\Shared\Notifications\NotificationService;
+use App\Shared\Notifications\RetryingNotificationService;
+use App\Shared\Notifications\SendVacationApprovedNotificationHandler;
+use App\Shared\Notifications\SendVacationRejectedNotificationHandler;
 use App\Shared\PasswordHasherArgon2id;
 use App\Shared\Ports\PasswordHasher;
+use App\Shared\SecurityHeadersMiddleware;
+use App\Shared\SystemClock;
 use Laminas\Diactoros\ResponseFactory;
 use League\Route\Strategy\JsonStrategy;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-// Load environment variables
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
-$dotenv->load();
+// All instants are handled as UTC (see App\Shared\DateTimes), independent of server settings.
+date_default_timezone_set('UTC');
+
+// Load environment variables. A .env file is optional: in a deployment the platform sets them directly.
+Environment::load(__DIR__ . '/../..');
+
+// Refuse to run with a configuration that cannot work, with a message that names the setting
+// (never its value). Weak secrets are a warning here and an error when APP_ENV=production.
+try {
+    Configuration::assertValid($_ENV);
+} catch (ConfigurationError $e) {
+    error_log($e->getMessage());
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo '{"status_code":500,"reason_phrase":"Internal Server Error"}';
+    exit(1);
+}
+foreach (Configuration::warnings($_ENV) as $warning) {
+    error_log('Configuration warning: ' . $warning);
+}
+
+// The PHP version is not the caller's business.
+header_remove('X-Powered-By');
 
 // Create a new container
 $container = new League\Container\Container();
@@ -29,8 +70,9 @@ $dbConfig = [
     'charset'  => $_ENV['DB_CHARSET'],
 ];
 
-// Add the database to the container
-$container->add(App\Shared\Database::class, function () use ($dbConfig) {
+// Add the database to the container. It is shared, so everything in a request uses the same
+// connection: a transaction only covers the queries that run on the connection that opened it.
+$container->addShared(App\Shared\Database::class, function () use ($dbConfig) {
     return new App\Shared\Database($dbConfig);
 });
 
@@ -46,10 +88,46 @@ $container->add(Psr\Http\Message\RequestInterface::class, function () {
 });
 $container->add(Psr\Http\Message\ResponseInterface::class, Laminas\Diactoros\Response::class);
 $container->add(PasswordHasher::class, PasswordHasherArgon2id::class);
+$container->add(Clock::class, SystemClock::class);
+// Resolved through the container (not given as a class name), so the repository's own dependencies are autowired.
+$container->add(VacationRequestRepository::class, fn () => $container->get(VacationsRepository::class));
 $container->add(AuthenticationService::class, function () {
     return new AuthenticationService(
         $_ENV['JWT_SECRET'],
     );
+});
+
+$container->addShared(Logger::class, ErrorLogLogger::class);
+
+// Notifications: an email per decision, written to a file instead of sent (no mail provider is needed),
+// and tried again a few times when writing fails. NOTIFICATIONS_DIR and MAIL_FROM are optional. The default
+// is the system temp directory: the local hardening overlay mounts be/ read-only, and it is writable everywhere.
+$container->addShared(NotificationService::class, function () use ($container) {
+    $directory = $_ENV['NOTIFICATIONS_DIR'] ?? '';
+    $from = $_ENV['MAIL_FROM'] ?? '';
+
+    return new RetryingNotificationService(
+        new EmailNotificationService(new FileEmailTransport(
+            is_string($directory) && $directory !== '' ? $directory : sys_get_temp_dir() . '/vacation-portal/notifications',
+            is_string($from) && $from !== '' ? $from : 'Vacation Portal <no-reply@vacation-portal.local>',
+        )),
+        $container->get(Logger::class),
+    );
+});
+
+// Events: which handler reacts to which event. Handlers are built when an event arrives, not at start-up.
+$container->addShared(EventDispatcher::class, function () use ($container) {
+    $dispatcher = new SynchronousEventDispatcher($container->get(Logger::class));
+    $dispatcher->listen(
+        VacationApprovedEvent::class,
+        fn (VacationApprovedEvent $event) => $container->get(SendVacationApprovedNotificationHandler::class)($event),
+    );
+    $dispatcher->listen(
+        VacationRejectedEvent::class,
+        fn (VacationRejectedEvent $event) => $container->get(SendVacationRejectedNotificationHandler::class)($event),
+    );
+
+    return $dispatcher;
 });
 
 // Add the router to the container
@@ -60,10 +138,16 @@ $container->add(League\Route\Router::class, function () use ($container) {
     $router = new League\Route\Router();
     $router->setStrategy($strategy); // Set the strategy here
 
-    // Add your routes here
-    new App\Domains\Authentication\Routes\AuthenticationRoutes($router)->register();
-    new App\Domains\Users\Routes\UsersRoutes($router)->register();
-    new App\Domains\Vacations\Routes\VacationsRoutes($router)->register();
+    // Identifies the caller (401 if it cannot) before an endpoint runs. Every route is behind it
+    // except logging in, which is how a caller gets a token.
+    $authentication = $container->get(AuthenticationMiddleware::class);
+
+    new App\Domains\Authentication\Routes\AuthenticationRoutes($router, $authentication)->register();
+
+    $router->group('', function (League\Route\RouteGroup $protected) {
+        new App\Domains\Users\Routes\UsersRoutes($protected)->register();
+        new App\Domains\Vacations\Routes\VacationsRoutes($protected)->register();
+    })->middleware($authentication);
 
     return $router;
 });
@@ -72,6 +156,9 @@ $container->delegate(new League\Container\ReflectionContainer());
 
 // Get the router from the container
 $router = $container->get(League\Route\Router::class);
+// The first one added is the outermost: headers go on every response, including the error responses
+// that the error handler (inside it) produces.
+$router->middleware(new SecurityHeadersMiddleware());
 $router->middleware(new ErrorHandlingMiddleware());
 
 // Dispatch the request

@@ -1,5 +1,3 @@
-type PhpDateTime = string | { date: string; timezone_type: number; timezone: string };
-
 export interface Vacation {
   id: number;
   user_id: number;
@@ -9,14 +7,19 @@ export interface Vacation {
     email: string;
     role: string;
   } | null;
-  from: PhpDateTime;
-  to: PhpDateTime;
+  from: string;
+  to: string;
+  /** Inclusive number of days from `from` to `to`. */
+  days: number;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
   authorized_by: number | null;
-  created_at: PhpDateTime;
-  updated_at: PhpDateTime;
+  created_at: string;
+  updated_at: string;
 }
+
+/** What the list can be narrowed to; `all` means every status. */
+export type VacationStatusFilter = Vacation['status'] | 'all';
 
 export interface CreateVacationRequest {
   from: string;

@@ -5,40 +5,62 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useTheme } from '@emotion/react';
 import type { Theme } from '@styles/theme';
 import { createUser, updateUser, getUser } from '@domains/users/api';
+import type { User } from '@domains/users/types';
 import { Layout } from '@components/Layout';
 import { useAuth } from '@hooks/useAuth';
+import { ErrorMessage } from '@components/ErrorMessage';
+import { getApiErrorMessage } from '@utils/apiError';
 import { userFormStyles } from './UserForm.styles';
 
+/** Loads the user being edited, then shows the form. Creating a user needs no loading. */
 export const UserForm = () => {
   const theme = useTheme() as Theme;
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
 
-  const { data: existingUser, isLoading: isLoadingUser } = useQuery({
+  const { data: existingUser, isLoading, isError, error } = useQuery({
     queryKey: ['user', id],
     queryFn: () => getUser(Number(id)),
     enabled: isEditMode && isAuthenticated,
   });
 
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    name: '',
-    employeeCode: '',
-    role: 'employee' as 'employee' | 'manager',
-  });
+  if (isEditMode && (isLoading || isError || !existingUser)) {
+    return (
+      <Layout>
+        <div css={userFormStyles(theme)}>
+          {isError ? (
+            <ErrorMessage message={getApiErrorMessage(error, 'Could not load the user. Please try again.')} />
+          ) : (
+            <div className="user-form__loading-state">Loading user...</div>
+          )}
+        </div>
+      </Layout>
+    );
+  }
 
-  // Derive the current form values from either formData or existingUser
-  const currentFormValues = {
-    email: formData.email || existingUser?.email || '',
-    password: formData.password,
-    name: formData.name || existingUser?.name || '',
-    employeeCode: formData.employeeCode || existingUser?.employee_code || '',
-    role: formData.role || existingUser?.role || ('employee' as 'employee' | 'manager'),
-  };
+  // The key gives each user a fresh form that starts from that user's values.
+  return <UserFormFields key={id ?? 'new'} id={id} existingUser={existingUser} />;
+};
+
+interface UserFormFieldsProps {
+  id: string | undefined;
+  existingUser: User | undefined;
+}
+
+const UserFormFields = ({ id, existingUser }: UserFormFieldsProps) => {
+  const theme = useTheme() as Theme;
+  const isEditMode = !!id;
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [formData, setFormData] = useState({
+    email: existingUser?.email ?? '',
+    password: '',
+    name: existingUser?.name ?? '',
+    employeeCode: existingUser?.employee_code ?? '',
+    role: existingUser?.role ?? ('employee' as 'employee' | 'manager'),
+  });
 
   const createMutation = useMutation({
     mutationFn: createUser,
@@ -63,33 +85,23 @@ export const UserForm = () => {
 
     if (isEditMode) {
       const updateData: { email?: string; password?: string; name?: string } = {
-        email: currentFormValues.email,
-        name: currentFormValues.name,
+        email: formData.email,
+        name: formData.name,
       };
-      if (currentFormValues.password) {
-        updateData.password = currentFormValues.password;
+      if (formData.password) {
+        updateData.password = formData.password;
       }
       updateMutation.mutate(updateData);
     } else {
       createMutation.mutate({
-        email: currentFormValues.email,
-        password: currentFormValues.password,
-        name: currentFormValues.name,
-        employee_code: currentFormValues.employeeCode,
-        role: currentFormValues.role,
+        email: formData.email,
+        password: formData.password,
+        name: formData.name,
+        employee_code: formData.employeeCode,
+        role: formData.role,
       });
     }
   };
-
-  if (isEditMode && isLoadingUser) {
-    return (
-      <Layout>
-        <div css={userFormStyles(theme)}>
-          <div className="user-form__loading-state">Loading user...</div>
-        </div>
-      </Layout>
-    );
-  }
 
   const mutation = isEditMode ? updateMutation : createMutation;
 
@@ -106,7 +118,7 @@ export const UserForm = () => {
                 className="user-form__input"
                 id="name"
                 type="text"
-                value={currentFormValues.name}
+                value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
                 placeholder="Full name"
@@ -119,7 +131,7 @@ export const UserForm = () => {
                 className="user-form__input"
                 id="email"
                 type="email"
-                value={currentFormValues.email}
+                value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
                 placeholder="email@example.com"
@@ -134,9 +146,11 @@ export const UserForm = () => {
                 className="user-form__input"
                 id="password"
                 type="password"
-                value={currentFormValues.password}
+                value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 required={!isEditMode}
+                minLength={8}
+                autoComplete="new-password"
                 placeholder="Minimum 8 characters"
               />
               <div className="user-form__help-text">Minimum 8 characters</div>
@@ -150,9 +164,12 @@ export const UserForm = () => {
                     className="user-form__input"
                     id="employeeCode"
                     type="text"
-                    value={currentFormValues.employeeCode}
+                    value={formData.employeeCode}
                     onChange={(e) => setFormData({ ...formData, employeeCode: e.target.value })}
                     required
+                    maxLength={7}
+                    inputMode="numeric"
+                    title="Exactly 7 digits"
                     placeholder="7-digit code"
                     pattern="[0-9]{7}"
                   />
@@ -164,7 +181,7 @@ export const UserForm = () => {
                   <select
                     className="user-form__select"
                     id="role"
-                    value={currentFormValues.role}
+                    value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value as 'employee' | 'manager' })}
                     required
                   >
@@ -176,9 +193,10 @@ export const UserForm = () => {
             )}
 
             {mutation.isError && (
-              <div className="user-form__error-message">
-                Failed to {isEditMode ? 'update' : 'create'} user. Please try again.
-              </div>
+              <ErrorMessage
+                className="user-form__error-message"
+                message={getApiErrorMessage(mutation.error, `Failed to ${isEditMode ? 'update' : 'create'} user. Please try again.`)}
+              />
             )}
 
             <div className="user-form__button-group">

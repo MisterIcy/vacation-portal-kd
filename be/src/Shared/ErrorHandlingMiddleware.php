@@ -21,12 +21,26 @@ class ErrorHandlingMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         } catch (InvalidArgumentException|JsonException $e) {
             return new JsonErrorResponse(400, $e->getMessage());
-        } catch (ForbiddenException $e) {
+        } catch (ForbiddenException|AccessDenied $e) {
             return new JsonErrorResponse(403, $e->getMessage());
+        } catch (NotFound $e) {
+            return new JsonErrorResponse(404, $e->getMessage());
+        } catch (Conflict $e) {
+            return new JsonErrorResponse(409, $e->getMessage());
         } catch (Throwable $e) {
-            // Those can be replaced by proper logging calls
-            // echo $e->getMessage();
-            // echo $e->getTraceAsString();
+            // The client only gets a generic message, so the cause has to be recorded here or it is lost.
+            // It goes to the error log (stderr in the container), never into the response.
+            error_log(sprintf(
+                '%s %s %s failed: %s: %s in %s:%d',
+                date(DATE_ATOM),
+                $request->getMethod(),
+                $request->getUri()->getPath(),
+                $e::class,
+                $e->getMessage(),
+                $e->getFile(),
+                $e->getLine(),
+            ));
+
             return new JsonErrorResponse(500, 'Internal Server Error');
         }
     }

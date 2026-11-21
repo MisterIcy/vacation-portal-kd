@@ -75,6 +75,26 @@ export const managerDashboardStyles = (theme: Theme) => css`
     margin: 0;
   }
 
+  .manager-dashboard__users {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .manager-dashboard__section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .manager-dashboard__section-title {
+    margin: 0;
+    color: ${theme.colors.text.primary};
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
   .manager-dashboard__action-description {
     font-size: ${theme.fontSize.sm};
     color: ${theme.colors.text.secondary};

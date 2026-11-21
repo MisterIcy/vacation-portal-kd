@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Domains\Users\Routes;
 
 use App\Domains\Users\Controllers\UsersController;
-use League\Route\Router;
+use League\Route\RouteCollectionInterface;
 
 readonly class UsersRoutes
 {
-    public function __construct(private Router $router)
+    public function __construct(private RouteCollectionInterface $router)
     {
     }
 

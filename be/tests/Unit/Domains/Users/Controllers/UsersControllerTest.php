@@ -17,8 +17,10 @@ use Laminas\Diactoros\ServerRequest;
 use Laminas\Diactoros\Response\JsonResponse;
 use Laminas\Diactoros\Stream;
 use League\Route\Http\Exception\ForbiddenException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use DateTime;
+use InvalidArgumentException;
 
 class UsersControllerTest extends TestCase
 {
@@ -140,7 +142,7 @@ class UsersControllerTest extends TestCase
      */
     public function testUpdate(): void
     {
-        $expectedId = 1;
+        $expectedId = 2;
         $expectedEmail = 'test2@example.com';
         $expectedPassword = 'password456';
         $expectedName = 'Jane Doe';
@@ -172,7 +174,7 @@ class UsersControllerTest extends TestCase
         $usersRepository = $this->createMock(UsersRepository::class);
         $usersRepository->expects($this->once())
             ->method('findById')
-            ->with(1)
+            ->with(2)
             ->willReturn($existingUserModel);
         $usersRepository->expects($this->once())
             ->method('update')
@@ -205,7 +207,7 @@ class UsersControllerTest extends TestCase
 
         $request = new ServerRequest([], [], null, null, $body);
 
-        $response = new UsersController($usersRepository, $this->getMockAccessControlService())->update($request, ['id' => 1]);
+        $response = new UsersController($usersRepository, $this->getMockAccessControlService())->update($request, ['id' => 2]);
         $this->assertInstanceOf(JsonResponse::class, $response);
         $this->assertSame(200, $response->getStatusCode());
 
@@ -213,6 +215,113 @@ class UsersControllerTest extends TestCase
         $responseData = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame($expectedEmail, $responseData['email']);
         $this->assertSame($expectedEmployeeCode, $responseData['employee_code']);
+    }
+
+    /**
+     * The edit form omits the password when the field is left blank; the user's
+     * current password must then be kept, not rejected as too short.
+     *
+     * @param array<string, string> $payload
+     * @throws DateMalformedStringException
+     * @throws JsonException
+     */
+    #[DataProvider('payloadsWithoutNewPassword')]
+    public function testUpdateWithoutNewPasswordKeepsCurrentPassword(array $payload): void
+    {
+        $existingUserModel = new UserModel(
+            1,
+            'test@example.com',
+            null,
+            'John Doe',
+            '1234567',
+            UserRole::Employee,
+            new DateTime(),
+            new DateTime()
+        );
+
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(1)->willReturn($existingUserModel);
+        $usersRepository->expects($this->once())
+            ->method('update')
+            ->with($this->callback(
+                fn ($user) => $user instanceof UserModel
+                    && $user->getPassword() === null
+                    && $user->getName() === 'Jane Doe'
+            ))
+            ->willReturn($existingUserModel);
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write(json_encode($payload, JSON_THROW_ON_ERROR));
+        $request = new ServerRequest([], [], null, null, $body);
+
+        $response = new UsersController($usersRepository, $this->getMockAccessControlService())->update($request, ['id' => 1]);
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    /**
+     * @return array<string, array{array<string, string>}>
+     */
+    public static function payloadsWithoutNewPassword(): array
+    {
+        return [
+            'password key omitted' => [['name' => 'Jane Doe', 'email' => 'test@example.com']],
+            'password is an empty string' => [['name' => 'Jane Doe', 'email' => 'test@example.com', 'password' => '']],
+        ];
+    }
+
+    public function testAManagerCannotChangeTheirOwnRole(): void
+    {
+        // The caller (id 1) is a manager; demoting themselves would remove their access, and if they were
+        // the last manager nobody could administer users any more.
+        $self = new UserModel(1, 'admin@example.com', null, 'Admin', '1000001', UserRole::Manager, new DateTime(), new DateTime());
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(1)->willReturn($self);
+        $usersRepository->expects($this->never())->method('update');
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write('{"role":"employee"}');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('You cannot change your own role');
+
+        (new UsersController($usersRepository, $this->getMockAccessControlService()))
+            ->update(new ServerRequest([], [], null, null, $body), ['id' => 1]);
+    }
+
+    public function testAManagerCanStillEditTheirOwnNameAndKeepTheirRole(): void
+    {
+        $self = new UserModel(1, 'admin@example.com', null, 'Admin', '1000001', UserRole::Manager, new DateTime(), new DateTime());
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(1)->willReturn($self);
+        $usersRepository->expects($this->once())->method('update')->willReturn($self);
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write('{"name":"New Name","role":"manager"}');
+
+        $response = (new UsersController($usersRepository, $this->getMockAccessControlService()))
+            ->update(new ServerRequest([], [], null, null, $body), ['id' => 1]);
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function testAManagerCanChangeSomeoneElsesRole(): void
+    {
+        $other = new UserModel(2, 'jane@example.com', null, 'Jane', '1000002', UserRole::Employee, new DateTime(), new DateTime());
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->method('findById')->with(2)->willReturn($other);
+        $usersRepository->expects($this->once())
+            ->method('update')
+            ->with($this->callback(fn (UserModel $user) => $user->getRole() === UserRole::Manager))
+            ->willReturn($other);
+
+        $body = new Stream('php://temp', 'rw');
+        $body->write('{"role":"manager"}');
+
+        $response = (new UsersController($usersRepository, $this->getMockAccessControlService()))
+            ->update(new ServerRequest([], [], null, null, $body), ['id' => 2]);
+
+        $this->assertSame(200, $response->getStatusCode());
     }
 
     public function testDelete(): void
@@ -248,6 +357,39 @@ class UsersControllerTest extends TestCase
         $usersRepository = $this->createMock(UsersRepository::class);
 
         new UsersController($usersRepository, $accessControlService)->delete($serverRequest, ['id' => 1]);
+    }
+
+    /**
+     * Every users endpoint is manager-only: a non-manager is refused before the
+     * repository is touched.
+     *
+     * @param callable(UsersController, ServerRequest): mixed $action
+     */
+    #[DataProvider('managerOnlyActions')]
+    public function testEveryEndpointRejectsNonManagers(callable $action): void
+    {
+        $accessControlService = $this->createMock(AccessControlService::class);
+        $accessControlService->method('isManagerFromRequest')->willReturn(false);
+        $usersRepository = $this->createMock(UsersRepository::class);
+        $usersRepository->expects($this->never())->method($this->anything());
+
+        $this->expectException(ForbiddenException::class);
+
+        $action(new UsersController($usersRepository, $accessControlService), $this->createMock(ServerRequest::class));
+    }
+
+    /**
+     * @return array<string, array{callable(UsersController, ServerRequest): mixed}>
+     */
+    public static function managerOnlyActions(): array
+    {
+        return [
+            'create' => [fn (UsersController $c, ServerRequest $r) => $c->create($r)],
+            'list' => [fn (UsersController $c, ServerRequest $r) => $c->list($r)],
+            'get' => [fn (UsersController $c, ServerRequest $r) => $c->get($r, ['id' => 2])],
+            'update' => [fn (UsersController $c, ServerRequest $r) => $c->update($r, ['id' => 2])],
+            'delete' => [fn (UsersController $c, ServerRequest $r) => $c->delete($r, ['id' => 2])],
+        ];
     }
 
     private function getMockAccessControlService(): AccessControlService

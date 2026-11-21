@@ -15,6 +15,29 @@ readonly class AuthenticationRepository
     {
     }
 
+    /**
+     * The person as they are now (used on every authenticated request), or null if the
+     * account no longer exists. No password hash is loaded.
+     */
+    public function findById(int $id): ?AuthenticatedUserModel
+    {
+        $rows = $this->db->query('SELECT id, email, name, role FROM users WHERE id = :id', ['id' => $id]);
+
+        if (empty($rows)) {
+            return null;
+        }
+
+        /** @var array{id: string, name: string, email: string, role: string} $data */
+        $data = $rows[0];
+
+        return new AuthenticatedUserModel(
+            id: intval($data['id']),
+            name: $data['name'],
+            email: $data['email'],
+            role: UserRole::from($data['role']),
+        );
+    }
+
     public function findByEmail(string $email): AuthenticatedUserModel
     {
         $sql = "SELECT id, email, name, password, role FROM users WHERE email = :email";

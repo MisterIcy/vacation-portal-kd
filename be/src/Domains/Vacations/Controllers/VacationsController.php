@@ -5,152 +5,311 @@ declare(strict_types=1);
 namespace App\Domains\Vacations\Controllers;
 
 use App\Domains\Authentication\Services\AccessControlService;
-use App\Domains\Vacations\Models\VacationModel;
-use App\Domains\Vacations\Models\VacationStatus;
-use App\Domains\Vacations\Repositories\VacationsRepository;
-use App\Shared\JsonErrorResponse;
-use DateMalformedStringException;
-use DateTime;
+use App\Domains\Vacations\Models\VacationRequest;
+use App\Domains\Vacations\Requests\CreateVacationRequest;
+use App\Domains\Vacations\Models\StatusFilter;
+use App\Domains\Vacations\Services\CancelVacation;
+use App\Domains\Vacations\Services\DecideVacation;
+use App\Domains\Vacations\Services\ListVacations;
+use App\Domains\Vacations\Services\RequestVacation;
+use App\Shared\Events\EventDispatcher;
+use App\Shared\Events\VacationApprovedEvent;
+use App\Shared\Events\VacationRejectedEvent;
+use App\Shared\Notifications\VacationDecision;
+use App\Shared\Notifications\VacationDecisionNotification;
+use App\Shared\RequestBody;
+use DateTimeImmutable;
+use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\Response\JsonResponse;
-use League\Route\Http\Exception\ForbiddenException;
+use OpenApi\Attributes as OA;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
+/**
+ * The HTTP side of vacation requests: read the request, call the use case for the caller, and
+ * write the response. The rules (who may do what, and when) live in the use cases and the
+ * vacation request itself.
+ */
 readonly class VacationsController
 {
-    public function __construct(private VacationsRepository $vacationsRepository, private AccessControlService $accessControl)
-    {
+    public function __construct(
+        private AccessControlService $accessControl,
+        private ListVacations $listVacations,
+        private RequestVacation $requestVacation,
+        private DecideVacation $decideVacation,
+        private CancelVacation $cancelVacation,
+        private EventDispatcher $events,
+    ) {
     }
 
     /**
-     * @throws DateMalformedStringException
+     * Optional query parameter `status`: pending, approved, rejected or all. Without it a manager gets
+     * the requests waiting for a decision and an employee gets all of their own.
+     *
+     * @throws InvalidArgumentException when the status is not one of the known values
      */
+    #[OA\Get(
+        path: '/vacations',
+        operationId: 'listVacations',
+        description: 'A manager gets the requests of all employees (with who asked), by default only those waiting for a decision. '
+            . 'An employee gets only their own requests, by default of every status. '
+            . 'Pending requests are ordered by start date, earliest first; other lists, newest first.',
+        summary: 'List vacation requests',
+        security: [['BearerAuth' => []]],
+        tags: ['Vacation'],
+        parameters: [
+            new OA\Parameter(
+                name: 'status',
+                description: 'Narrow the list to one status, or `all`.',
+                in: 'query',
+                required: false,
+                schema: new OA\Schema(type: 'string', enum: ['pending', 'approved', 'rejected', 'all']),
+            ),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The requests, possibly none.',
+                content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: '#/components/schemas/Vacation')),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function list(ServerRequestInterface $request): ResponseInterface
     {
-        // Just checking the isManagerFromRequest also validates that the user is authenticated. If we introduce
-        // more roles in the future, we will need to adjust this logic.
-        if ($this->accessControl->isManagerFromRequest($request)) {
-            $vacationsCollection = $this->vacationsRepository->findPendingRequests();
-        } else {
-            $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-            $vacationsCollection = $this->vacationsRepository->findUserRequests($authenticatedUser->getId());
-        }
-
-        return new JsonResponse($vacationsCollection, 200);
-    }
-
-    /**
-     * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function approve(ServerRequestInterface $request, array $params): ResponseInterface
-    {
-        return $this->updateStatus($request, $params, VacationStatus::Approved);
-    }
-
-    /**
-     * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function reject(ServerRequestInterface $request, array $params): ResponseInterface
-    {
-        return $this->updateStatus($request, $params, VacationStatus::Rejected);
-    }
-
-    /**
-     * @throws JsonException|ForbiddenException|DateMalformedStringException
-     */
-    public function create(ServerRequestInterface $request): ResponseInterface
-    {
-        $this->requireEmployee($request);
-        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-
-        /** @var array<string, string> $body */
-        $body = json_decode((string) $request->getBody(), true, 512, JSON_THROW_ON_ERROR);
-
-        $vacationModel = new VacationModel(
-            null,
-            $authenticatedUser->getId(),
-            null,
-            new DateTime($body['from'] ?? ''),
-            new DateTime($body['to'] ?? ''),
-            $body['reason'] ?? '',
-            VacationStatus::Pending
+        $vacations = ($this->listVacations)(
+            $this->accessControl->principalFromRequest($request),
+            $this->statusFilter($request),
         );
 
-        $vacationModel = $this->vacationsRepository->create($vacationModel);
+        return new JsonResponse($vacations, 200);
+    }
 
-        return new JsonResponse($vacationModel, 201);
+    /**
+     * The body is optional; it may carry a "message" for the employee.
+     *
+     * @param array{id: int} $params
+     * @throws JsonException
+     */
+    #[OA\Put(
+        path: '/vacations/{id}/approve',
+        operationId: 'approveVacation',
+        description: 'Manager only. Only a pending request can be approved. The employee is emailed the decision, with the message if one is given.',
+        summary: 'Approve a vacation request',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(ref: '#/components/schemas/DecisionBody'),
+        ),
+        tags: ['Vacation'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/VacationId')],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The request as decided.',
+                content: new OA\JsonContent(ref: '#/components/schemas/Vacation'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
+    public function approve(ServerRequestInterface $request, array $params): ResponseInterface
+    {
+        $message = $this->optionalMessage($request);
+
+        $decided = $this->decideVacation->approve($this->accessControl->principalFromRequest($request), (int) $params['id']);
+
+        $this->announce($decided, VacationDecision::Approved, $message);
+
+        return new JsonResponse($decided, 200);
+    }
+
+    /**
+     * The body is optional; it may carry a "message" for the employee.
+     *
+     * @param array{id: int} $params
+     * @throws JsonException
+     */
+    #[OA\Put(
+        path: '/vacations/{id}/reject',
+        operationId: 'rejectVacation',
+        description: 'Manager only. Only a pending request can be rejected. The employee is emailed the decision, with the message if one is given.',
+        summary: 'Reject a vacation request',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(ref: '#/components/schemas/DecisionBody'),
+        ),
+        tags: ['Vacation'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/VacationId')],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The request as decided.',
+                content: new OA\JsonContent(ref: '#/components/schemas/Vacation'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
+    public function reject(ServerRequestInterface $request, array $params): ResponseInterface
+    {
+        $message = $this->optionalMessage($request);
+
+        $decided = $this->decideVacation->reject($this->accessControl->principalFromRequest($request), (int) $params['id']);
+
+        $this->announce($decided, VacationDecision::Rejected, $message);
+
+        return new JsonResponse($decided, 200);
+    }
+
+    /**
+     * @throws JsonException
+     */
+    #[OA\Post(
+        path: '/vacations',
+        operationId: 'createVacation',
+        description: 'Employee only. The request starts out pending. It cannot start in the past, span more than 60 days, '
+            . 'or overlap another pending or approved request of the same employee (409).',
+        summary: 'Request a vacation',
+        security: [['BearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: '#/components/schemas/CreateVacationBody'),
+        ),
+        tags: ['Vacation'],
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'The new request.',
+                content: new OA\JsonContent(ref: '#/components/schemas/Vacation'),
+            ),
+            new OA\Response(ref: '#/components/responses/400', response: 400),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
+    public function create(ServerRequestInterface $request): ResponseInterface
+    {
+        $input = CreateVacationRequest::fromRequest($request);
+
+        $vacation = ($this->requestVacation)(
+            $this->accessControl->principalFromRequest($request),
+            $input->getFrom(),
+            $input->getTo(),
+            $input->getReason(),
+        );
+
+        return new JsonResponse($vacation, 201);
     }
 
     /**
      * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
      */
+    #[OA\Delete(
+        path: '/vacations/{id}',
+        operationId: 'cancelVacation',
+        description: 'Employee only, and only their own request while it is still pending. '
+            . 'Someone else\'s request is reported as not found, so its existence is not revealed.',
+        summary: 'Cancel a pending vacation request',
+        security: [['BearerAuth' => []]],
+        tags: ['Vacation'],
+        parameters: [new OA\Parameter(ref: '#/components/parameters/VacationId')],
+        responses: [
+            new OA\Response(response: 204, description: 'The request was cancelled.'),
+            new OA\Response(ref: '#/components/responses/401', response: 401),
+            new OA\Response(ref: '#/components/responses/403', response: 403),
+            new OA\Response(ref: '#/components/responses/404', response: 404),
+            new OA\Response(ref: '#/components/responses/409', response: 409),
+            new OA\Response(ref: '#/components/responses/500', response: 500),
+        ],
+    )]
     public function delete(ServerRequestInterface $request, array $params): ResponseInterface
     {
-        $this->requireEmployee($request);
-        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-        $vacationId = (int) $params['id'];
-
-        $vacationModel = $this->vacationsRepository->findById($vacationId);
-
-        if ($authenticatedUser->getId() !== $vacationModel->getUserId()) {
-            return new JsonErrorResponse(400, 'Vacation with ID '.$params['id'].' not found.');
-        }
-
-        if ($vacationModel->getStatus() != VacationStatus::Pending) {
-            return new JsonErrorResponse(400, 'Only pending vacations can be deleted.');
-        }
-
-        $this->vacationsRepository->delete($vacationId);
+        ($this->cancelVacation)($this->accessControl->principalFromRequest($request), (int) $params['id']);
 
         return new JsonResponse('', 204);
     }
 
     /**
-     * @param array{id: int} $params
-     * @throws ForbiddenException|DateMalformedStringException
+     * Read before the decision is made, so a malformed message is a 400 that changes nothing.
+     * Clients that send no body at all are fine.
+     *
+     * @throws InvalidArgumentException when the message is not a string or is too long
+     * @throws JsonException when a body is sent that is not valid JSON
      */
-    private function updateStatus(ServerRequestInterface $request, array $params, VacationStatus $status): ResponseInterface
+    private function statusFilter(ServerRequestInterface $request): ?StatusFilter
     {
-        $this->requireManager($request);
-        $authenticatedUser = $this->accessControl->getAuthenticatedUserModelFromRequest($request);
-        $vacationId = (int) $params['id'];
-
-        $vacationModel = $this->vacationsRepository->findById($vacationId);
-
-        if ($vacationModel->getStatus() != VacationStatus::Pending) {
-            return new JsonErrorResponse(400, 'Only pending vacations can be updated.');
+        $queryParams = $request->getQueryParams();
+        if (!array_key_exists('status', $queryParams)) {
+            return null;
         }
 
-        $vacationModel = $this->vacationsRepository->updateStatus($vacationId, $authenticatedUser->getId(), $status);
+        $value = $queryParams['status'];
+        $filter = is_string($value) ? StatusFilter::tryFrom($value) : null;
+        if ($filter === null) {
+            throw new InvalidArgumentException("'status' must be one of: " . StatusFilter::allowedValues() . '.');
+        }
 
-        return new JsonResponse($vacationModel, 200);
+        return $filter;
+    }
+
+    private function optionalMessage(ServerRequestInterface $request): ?string
+    {
+        if (trim((string) $request->getBody()) === '') {
+            return null;
+        }
+
+        $message = RequestBody::fromRequest($request)->optionalText('message');
+        if ($message !== null && mb_strlen(trim($message)) > VacationDecisionNotification::MAX_MESSAGE_LENGTH) {
+            throw new InvalidArgumentException("'message' must be at most " . VacationDecisionNotification::MAX_MESSAGE_LENGTH . ' characters.');
+        }
+
+        return $message;
     }
 
     /**
-     * @param ServerRequestInterface $request
-     * @return void
-     * @throws ForbiddenException
+     * Tells whoever listens that the request was decided. The decision is already stored, and
+     * the dispatcher does not let a failing listener change the answer to the manager.
      */
-    private function requireManager(ServerRequestInterface $request): void
+    private function announce(VacationRequest $decided, VacationDecision $decision, ?string $message): void
     {
-        if (!$this->accessControl->isManagerFromRequest($request)) {
-            throw new ForbiddenException();
+        $employee = $decided->getEmployee();
+        $id = $decided->getId();
+        if ($employee === null || $id === null) {
+            return; // a stored request always has both; there is nobody to tell otherwise
         }
-    }
 
-    /**
-     * @param ServerRequestInterface $request
-     * @return void
-     * @throws ForbiddenException
-     */
-    private function requireEmployee(ServerRequestInterface $request): void
-    {
-        if (!$this->accessControl->isEmployeeFromRequest($request)) {
-            throw new ForbiddenException();
-        }
+        $notification = new VacationDecisionNotification(
+            $employee->getId(),
+            $employee->getName(),
+            $employee->getEmail(),
+            $id,
+            DateTimeImmutable::createFromMutable($decided->getFrom()),
+            DateTimeImmutable::createFromMutable($decided->getTo()),
+            $decided->getDays(),
+            $decided->getReason(),
+            $decision,
+            $message,
+        );
+
+        $this->events->dispatch(
+            $decision === VacationDecision::Approved
+                ? new VacationApprovedEvent($notification)
+                : new VacationRejectedEvent($notification),
+        );
     }
 }

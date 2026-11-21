@@ -41,6 +41,15 @@
     "db:migrate": "vendor/bin/phinx migrate",
     "db:seed": "vendor/bin/phinx seed:run",
     "db:create-migration": "vendor/bin/phinx create",
-    "db:create-seed": "vendor/bin/phinx seed:create"
+    "db:create-seed": "vendor/bin/phinx seed:create",
+
+    "db:migrate:test": "vendor/bin/phinx migrate -e testing",
+    "db:verify-migrations": [
+      "vendor/bin/phinx migrate -e testing",
+      "vendor/bin/phinx rollback -e testing -t 0",
+      "vendor/bin/phinx migrate -e testing"
+    ],
+    "test:unit": "vendor/bin/phpunit --testsuite Unit",
+    "test:integration": "vendor/bin/phpunit --testsuite Integration"
   }
 }

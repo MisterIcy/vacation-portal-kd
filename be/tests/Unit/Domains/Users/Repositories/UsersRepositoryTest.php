@@ -7,11 +7,15 @@ namespace Tests\Unit\Domains\Users\Repositories;
 use App\Domains\Users\Models\UserModel;
 use App\Domains\Users\Models\UserRole;
 use App\Domains\Users\Repositories\UsersRepository;
+use App\Shared\Conflict;
 use App\Shared\Database;
+use App\Shared\NotFound;
 use App\Shared\PasswordHasherArgon2id;
 use InvalidArgumentException;
+use Exception;
 use PDOException;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 class UsersRepositoryTest extends TestCase
 {
@@ -73,7 +77,7 @@ class UsersRepositoryTest extends TestCase
 
     public function testCreateUniqueConstraint(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(Conflict::class);
         $this->expectExceptionMessage("Email ('test@example.com') or Employee code ('1234567') is already in use.");
 
         $dbMock = $this->createMock(Database::class);
@@ -81,7 +85,7 @@ class UsersRepositoryTest extends TestCase
         $user = new UserModel(null, 'test@example.com', 'password123', 'John Doe', '1234567', UserRole::Employee);
         $dbMock->expects($this->once())
             ->method('execute')
-            ->willThrowException(new PDOException('Duplicate', 23000));
+            ->willThrowException(self::duplicateEntryException());
         $repo->create($user);
     }
 
@@ -128,7 +132,7 @@ class UsersRepositoryTest extends TestCase
         $dbMock->expects($this->once())
             ->method('query')
             ->willReturn([]);
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('User with ID 1 not found.');
         $repo->findById(1);
     }
@@ -151,7 +155,7 @@ class UsersRepositoryTest extends TestCase
         $dbMock->expects($this->once())
             ->method('execute')
             ->willReturn(0);
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('User with ID 1 not found.');
         $repo->delete(1);
     }
@@ -279,7 +283,7 @@ class UsersRepositoryTest extends TestCase
 
     public function testUpdateUniqueConstraint(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(Conflict::class);
         $this->expectExceptionMessage("Email 'test@example.com' is already in use.");
 
         $dbMock = $this->createMock(Database::class);
@@ -287,7 +291,65 @@ class UsersRepositoryTest extends TestCase
         $user = new UserModel(1, 'test@example.com', null, 'John Doe', '1234567', UserRole::Employee);
         $dbMock->expects($this->once())
             ->method('execute')
-            ->willThrowException(new PDOException('Duplicate', 23000));
+            ->willThrowException(self::duplicateEntryException());
         $repo->update($user);
+    }
+
+    public function testCreateReportsADatabaseRuleViolationAsInvalidData(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $repo = new UsersRepository($dbMock, new PasswordHasherArgon2id());
+        $user = new UserModel(null, 'test@example.com', 'password123', 'John Doe', '1234567', UserRole::Employee);
+        $dbMock->method('execute')->willThrowException(
+            self::pdoException('HY000', 3819, "Check constraint 'chk_users_employee_code' is violated.")
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The submitted data violates a database rule.');
+
+        $repo->create($user);
+    }
+
+    public function testCreateDoesNotReportOtherIntegrityViolationsAsDuplicates(): void
+    {
+        // A foreign key failure shares SQLSTATE 23000 with a duplicate key but is a different problem.
+        $foreignKeyViolation = self::pdoException(
+            '23000',
+            1452,
+            'SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row'
+        );
+
+        $dbMock = $this->createMock(Database::class);
+        $repo = new UsersRepository($dbMock, new PasswordHasherArgon2id());
+        $user = new UserModel(null, 'test@example.com', 'password123', 'John Doe', '1234567', UserRole::Employee);
+        $dbMock->expects($this->once())
+            ->method('execute')
+            ->willThrowException($foreignKeyViolation);
+
+        $this->expectExceptionObject($foreignKeyViolation);
+
+        $repo->create($user);
+    }
+
+    /**
+     * Builds an exception shaped like the ones PDO really throws: the code is the
+     * SQLSTATE *string* and the driver's own error number is in errorInfo[1].
+     */
+    private static function pdoException(string $sqlState, int $driverCode, string $message): PDOException
+    {
+        $exception = new PDOException($message);
+        (new ReflectionProperty(Exception::class, 'code'))->setValue($exception, $sqlState);
+        $exception->errorInfo = [$sqlState, $driverCode, $message];
+
+        return $exception;
+    }
+
+    private static function duplicateEntryException(): PDOException
+    {
+        return self::pdoException(
+            '23000',
+            1062,
+            "SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'test@example.com' for key 'users.email'"
+        );
     }
 }

@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Vacations\Repositories;
 
-use App\Domains\Vacations\Models\VacationModel;
+use App\Domains\Vacations\Exceptions\VacationNotPending;
+use App\Domains\Vacations\Models\DateRange;
+use App\Domains\Vacations\Models\StatusFilter;
+use App\Domains\Vacations\Models\VacationRequest;
 use App\Domains\Vacations\Models\VacationStatus;
 use App\Domains\Vacations\Repositories\VacationsRepository;
 use App\Shared\Database;
+use App\Shared\NotFound;
 use DateMalformedStringException;
 use DateTime;
 use InvalidArgumentException;
+use PDOException;
 use PHPUnit\Framework\TestCase;
 
 class VacationsRepositoryTest extends TestCase
@@ -31,7 +36,7 @@ class VacationsRepositoryTest extends TestCase
 
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
-        $vacation = new VacationModel(
+        $vacation = new VacationRequest(
             null,
             $expectedUserId,
             null,
@@ -79,7 +84,7 @@ class VacationsRepositoryTest extends TestCase
 
         $this->assertSame($expectedId, $created->getId());
         $this->assertSame($expectedUserId, $created->getUserId());
-        $this->assertNull($created->getUser());
+        $this->assertNull($created->getEmployee());
         $this->assertSame($expectedFrom, $created->getFrom()->format('Y-m-d'));
         $this->assertSame($expectedTo, $created->getTo()->format('Y-m-d'));
         $this->assertSame($expectedReason, $created->getReason());
@@ -109,7 +114,8 @@ class VacationsRepositoryTest extends TestCase
         $dbMock->expects($this->once())
             ->method('query')
             ->with(
-                $this->equalTo('SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE id = :id'),
+                $this->callback(fn (string $sql) => str_contains($sql, 'u.email AS employee_email')
+                    && str_ends_with($sql, 'FROM vacations v INNER JOIN users u ON v.user_id = u.id WHERE v.id = :id')),
                 ['id' => $expectedId]
             )
             ->willReturn([
@@ -123,10 +129,17 @@ class VacationsRepositoryTest extends TestCase
                     'authorized_by' => $expectedAuthorizedBy,
                     'created_at' => $expectedCreatedAt,
                     'updated_at' => $expectedUpdatedAt,
+                    'employee_name' => 'Ada Lovelace',
+                    'employee_email' => 'ada@example.com',
+                    'employee_code' => '1234567',
+                    'employee_role' => 'employee',
                 ]
             ]);
 
         $vacation = $repo->findById($expectedId);
+
+        $this->assertSame('ada@example.com', $vacation->getEmployee()?->getEmail());
+        $this->assertSame('Ada Lovelace', $vacation->getEmployee()->getName());
 
         $this->assertSame($expectedId, $vacation->getId());
         $this->assertSame($expectedUserId, $vacation->getUserId());
@@ -144,7 +157,7 @@ class VacationsRepositoryTest extends TestCase
      */
     public function testFindByIdNotFound(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(NotFound::class);
         $this->expectExceptionMessage('Vacation with ID 1 not found.');
 
         $dbMock = $this->createMock(Database::class);
@@ -170,10 +183,11 @@ class VacationsRepositoryTest extends TestCase
         $repo->delete(1);
     }
 
-    public function testDeleteNotFound(): void
+    public function testDeleteOfARequestThatIsNoLongerPendingIsAConflict(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Vacation with ID 1 not found.');
+        // Nothing was deleted: the caller found it pending a moment ago, so it was decided meanwhile.
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be deleted.');
 
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
@@ -235,10 +249,11 @@ class VacationsRepositoryTest extends TestCase
     /**
      * @throws DateMalformedStringException
      */
-    public function testUpdateStatusNotFound(): void
+    public function testDecidingARequestThatWasDecidedMeanwhileIsAConflict(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Vacation with ID 1 not found.');
+        // Two managers deciding at the same moment: the conditional write matches no row for the second.
+        $this->expectException(VacationNotPending::class);
+        $this->expectExceptionMessage('Only pending vacations can be updated.');
 
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
@@ -253,7 +268,7 @@ class VacationsRepositoryTest extends TestCase
     /**
      * @throws DateMalformedStringException
      */
-    public function testFindPendingRequests(): void
+    public function testFindRequestsForTheManagersQueue(): void
     {
         $dbMock = $this->createMock(Database::class);
         $repo = new VacationsRepository($dbMock);
@@ -300,7 +315,7 @@ class VacationsRepositoryTest extends TestCase
                 ]
             ]);
 
-        $collection = $repo->findPendingRequests();
+        $collection = $repo->findRequests(StatusFilter::Pending);
 
         /** @var array<int, array<string, mixed>> $vacations */
         $vacations = $collection->jsonSerialize();
@@ -318,6 +333,49 @@ class VacationsRepositoryTest extends TestCase
     /**
      * @throws DateMalformedStringException
      */
+    public function testTheManagersHistoryOfDecidedRequestsIsFilteredByStatusAndMostRecentFirst(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(fn (string $sql) => str_contains($sql, 'INNER JOIN users u ON v.user_id = u.id WHERE v.status = :status ORDER BY v.`from` DESC')),
+                ['status' => 'approved']
+            )
+            ->willReturn([]);
+
+        (new VacationsRepository($dbMock))->findRequests(StatusFilter::Approved);
+    }
+
+    public function testTheManagersListOfEveryRequestHasNoStatusCondition(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(fn (string $sql) => !str_contains($sql, 'v.status =')
+                    && str_contains($sql, 'INNER JOIN users u ON v.user_id = u.id ORDER BY v.`from` DESC')),
+                []
+            )
+            ->willReturn([]);
+
+        (new VacationsRepository($dbMock))->findRequests(StatusFilter::All);
+    }
+
+    public function testAnEmployeesRequestsCanBeNarrowedByStatusAndStayTheirOwn(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->equalTo('SELECT id, user_id, `from`, `to`, reason, status, authorized_by, created_at, updated_at FROM vacations WHERE user_id = :user_id AND status = :status ORDER BY `from` DESC'),
+                ['user_id' => 7, 'status' => 'pending']
+            )
+            ->willReturn([]);
+
+        (new VacationsRepository($dbMock))->findUserRequests(7, StatusFilter::Pending);
+    }
+
     public function testFindUserRequests(): void
     {
         $userId = 1;
@@ -349,5 +407,75 @@ class VacationsRepositoryTest extends TestCase
         $vacations = $collection->jsonSerialize();
         $this->assertCount(1, $vacations);
         $this->assertSame($userId, $vacations[0]['user_id']);
+    }
+
+    public function testCreateReportsADatabaseRuleViolationAsInvalidData(): void
+    {
+        $exception = new PDOException("Check constraint 'chk_vacations_date_range' is violated.");
+        $exception->errorInfo = ['HY000', 3819, "Check constraint 'chk_vacations_date_range' is violated."];
+
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('execute')->willThrowException($exception);
+        $vacation = new VacationRequest(null, 1, null, new DateTime('2026-12-01'), new DateTime('2026-12-05'), 'Trip');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The submitted data violates a database rule.');
+
+        (new VacationsRepository($dbMock))->create($vacation);
+    }
+
+    public function testLockEmployeeLocksTheEmployeesRow(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with($this->stringContains('FROM users WHERE id = :id FOR UPDATE'), ['id' => 7])
+            ->willReturn([['id' => 7]]);
+
+        (new VacationsRepository($dbMock))->lockEmployee(7);
+    }
+
+    public function testLockEmployeeRefusesAnEmployeeThatNoLongerExists(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('query')->willReturn([]);
+
+        $this->expectException(NotFound::class);
+        $this->expectExceptionMessage('Employee with ID 7 not found.');
+
+        (new VacationsRepository($dbMock))->lockEmployee(7);
+    }
+
+    public function testHasOverlapLooksForPendingAndApprovedRequestsSharingADay(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->expects($this->once())
+            ->method('query')
+            ->with(
+                $this->callback(fn (string $sql) => str_contains($sql, 'status IN (:pending, :approved)')
+                    && str_contains($sql, '`from` <= :to AND `to` >= :from')),
+                [
+                    'user_id' => 7,
+                    'pending' => 'pending',
+                    'approved' => 'approved',
+                    'from' => '2026-07-20',
+                    'to' => '2026-07-25',
+                ]
+            )
+            ->willReturn([['1' => 1]]);
+
+        $range = new DateRange(new DateTime('2026-07-20'), new DateTime('2026-07-25'));
+
+        $this->assertTrue((new VacationsRepository($dbMock))->hasOverlap(7, $range));
+    }
+
+    public function testHasOverlapIsFalseWhenNothingCollides(): void
+    {
+        $dbMock = $this->createMock(Database::class);
+        $dbMock->method('query')->willReturn([]);
+
+        $range = new DateRange(new DateTime('2026-07-20'), new DateTime('2026-07-25'));
+
+        $this->assertFalse((new VacationsRepository($dbMock))->hasOverlap(7, $range));
     }
 }

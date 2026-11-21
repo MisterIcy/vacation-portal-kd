@@ -23,10 +23,11 @@ export default defineConfig({
       ],
       include: ['src/**/*.{ts,tsx}'],
       thresholds: {
-        lines: 14,
-        functions: 12,
-        branches: 16,
-        statements: 14,
+        // Just under what the suite reaches (about 95 / 93 / 93 / 95), so a real drop fails the run.
+        lines: 94,
+        functions: 92,
+        branches: 91,
+        statements: 94,
       },
     },
   },

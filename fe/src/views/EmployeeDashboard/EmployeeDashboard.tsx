@@ -3,15 +3,17 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@emotion/react';
 import { getVacations } from '@domains/vacations/api';
+import { vacationKeys } from '@domains/vacations/queryKeys';
 import { Layout } from '@components/Layout';
+import { VacationRequests } from '@components/VacationRequests';
 import type { Theme } from '@styles/theme';
 import { employeeDashboardStyles } from './EmployeeDashboard.styles';
 
 export const EmployeeDashboard = () => {
   const theme = useTheme() as Theme;
   const { data: vacations, isLoading } = useQuery({
-    queryKey: ['vacations'],
-    queryFn: getVacations,
+    queryKey: vacationKeys.list(),
+    queryFn: () => getVacations(),
   });
 
   const pendingCount = vacations?.filter(v => v.status === 'pending').length || 0;
@@ -69,6 +71,13 @@ export const EmployeeDashboard = () => {
             </div>
           </div>
         )}
+
+        <section className="employee-dashboard__requests" aria-labelledby="my-requests-title">
+          <h3 id="my-requests-title" className="employee-dashboard__section-title">
+            My vacation requests
+          </h3>
+          <VacationRequests emptyMessage="You have not requested any vacation yet. Use “Request New Vacation” to submit one." />
+        </section>
       </div>
     </Layout>
   );

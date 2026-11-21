@@ -4,57 +4,57 @@ declare(strict_types=1);
 
 namespace App\Domains\Authentication\Services;
 
+use App\Domains\Authentication\Middleware\AuthenticationMiddleware;
 use App\Domains\Authentication\Models\AuthenticatedUserModel;
 use App\Domains\Users\Models\UserRole;
-use InvalidArgumentException;
+use App\Shared\Principal;
+use LogicException;
 use Psr\Http\Message\ServerRequestInterface;
 
+/**
+ * Answers "who is calling, and in which role" for an endpoint.
+ *
+ * Identifying the caller is the AuthenticationMiddleware's job and happens before any
+ * endpoint runs; this reads its result. It does not look at the token itself.
+ */
 readonly class AccessControlService
 {
-    public function __construct(private AuthenticationService $authenticationService)
-    {
-    }
-
     public function isEmployeeFromRequest(ServerRequestInterface $request): bool
     {
-        $jwt = $this->extractJwtFromRequest($request);
-        return $this->isEmployee($jwt);
+        return $this->getAuthenticatedUserModelFromRequest($request)->getRole() === UserRole::Employee;
     }
 
     public function isManagerFromRequest(ServerRequestInterface $request): bool
     {
-        $jwt = $this->extractJwtFromRequest($request);
-        return $this->isManager($jwt);
+        return $this->getAuthenticatedUserModelFromRequest($request)->getRole() === UserRole::Manager;
     }
 
-    public function isEmployee(string $jwt): bool
+    /**
+     * The caller as the application layer sees them, free of anything HTTP or authentication specific.
+     *
+     * @throws LogicException when the endpoint is not behind the authentication middleware
+     */
+    public function principalFromRequest(ServerRequestInterface $request): Principal
     {
-        return $this->extractRoleFromJwt($jwt) === UserRole::Employee->value;
+        $user = $this->getAuthenticatedUserModelFromRequest($request);
+
+        return $user->getRole() === UserRole::Manager
+            ? Principal::manager($user->getId())
+            : Principal::employee($user->getId());
     }
 
-    public function isManager(string $jwt): bool
-    {
-        return $this->extractRoleFromJwt($jwt) === UserRole::Manager->value;
-    }
-
+    /**
+     * @throws LogicException when the endpoint is not behind the authentication middleware
+     */
     public function getAuthenticatedUserModelFromRequest(ServerRequestInterface $request): AuthenticatedUserModel
     {
-        $jwt = $this->extractJwtFromRequest($request);
-        return $this->authenticationService->parseToken($jwt);
-    }
+        $user = $request->getAttribute(AuthenticationMiddleware::ATTRIBUTE);
 
-    private function extractJwtFromRequest(ServerRequestInterface $request): string
-    {
-        $authHeader = $request->getHeaderLine('Authorization');
-        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
-            throw new InvalidArgumentException('Missing or invalid Authorization header');
+        if (!$user instanceof AuthenticatedUserModel) {
+            // A route that forgot the middleware must fail closed, never act as an anonymous user.
+            throw new LogicException('No authenticated user on the request; the route is missing the authentication middleware.');
         }
-        return trim(substr($authHeader, 7));
-    }
 
-    private function extractRoleFromJwt(string $jwt): string
-    {
-        $user = $this->authenticationService->parseToken($jwt);
-        return $user->getRole()->value;
+        return $user;
     }
 }

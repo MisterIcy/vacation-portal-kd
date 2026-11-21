@@ -4,108 +4,64 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Authentication\Services;
 
+use App\Domains\Authentication\Middleware\AuthenticationMiddleware;
 use App\Domains\Authentication\Models\AuthenticatedUserModel;
 use App\Domains\Authentication\Services\AccessControlService;
-use App\Domains\Authentication\Services\AuthenticationService;
 use App\Domains\Users\Models\UserRole;
-use InvalidArgumentException;
+use Laminas\Diactoros\ServerRequest;
+use LogicException;
 use PHPUnit\Framework\TestCase;
-use Psr\Http\Message\ServerRequestInterface;
 
 class AccessControlServiceTest extends TestCase
 {
-    /**
-     * @param string $role
-     * @return array{0: string, 1: AccessControlService}
-     */
-    private function createJwtForRole(string $role): array
+    public function testAnEmployeeIsRecognisedAsOne(): void
     {
-        $user = new AuthenticatedUserModel(
-            id: 1,
-            name: 'Test User',
-            email: 'test@example.com',
-            role: UserRole::from($role),
+        $request = $this->requestFrom(UserRole::Employee);
+        $service = new AccessControlService();
+
+        $this->assertTrue($service->isEmployeeFromRequest($request));
+        $this->assertFalse($service->isManagerFromRequest($request));
+    }
+
+    public function testAManagerIsRecognisedAsOne(): void
+    {
+        $request = $this->requestFrom(UserRole::Manager);
+        $service = new AccessControlService();
+
+        $this->assertTrue($service->isManagerFromRequest($request));
+        $this->assertFalse($service->isEmployeeFromRequest($request));
+    }
+
+    public function testReturnsTheUserThatTheMiddlewareAttached(): void
+    {
+        $user = new AuthenticatedUserModel(5, 'Jane', 'jane@example.com', UserRole::Manager);
+        $request = (new ServerRequest())->withAttribute(AuthenticationMiddleware::ATTRIBUTE, $user);
+
+        $this->assertSame($user, (new AccessControlService())->getAuthenticatedUserModelFromRequest($request));
+    }
+
+    public function testFailsClosedWhenARouteIsMissingTheMiddleware(): void
+    {
+        $this->expectException(LogicException::class);
+
+        // No user attached: this must never be treated as "anonymous but allowed".
+        (new AccessControlService())->isManagerFromRequest(new ServerRequest());
+    }
+
+    public function testIgnoresAnythingElseStoredUnderThatAttribute(): void
+    {
+        $request = (new ServerRequest())->withAttribute(AuthenticationMiddleware::ATTRIBUTE, ['role' => 'manager']);
+
+        $this->expectException(LogicException::class);
+
+        (new AccessControlService())->isManagerFromRequest($request);
+    }
+
+    private function requestFrom(UserRole $role): ServerRequest
+    {
+        return (new ServerRequest())->withAttribute(
+            AuthenticationMiddleware::ATTRIBUTE,
+            new AuthenticatedUserModel(1, 'Jane', 'jane@example.com', $role)
         );
-
-        $authService = new AuthenticationService('test_secret');
-        $jwt = $authService->createToken($user);
-
-        return [$jwt, new AccessControlService($authService)];
-    }
-
-    public function testIsEmployeeReturnsTrueForEmployee(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('employee');
-        $this->assertTrue($accessControl->isEmployee($jwt));
-    }
-
-    public function testIsEmployeeReturnsFalseForManager(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('manager');
-        $this->assertFalse($accessControl->isEmployee($jwt));
-    }
-
-    public function testIsManagerReturnsTrueForManager(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('manager');
-        $this->assertTrue($accessControl->isManager($jwt));
-    }
-
-    public function testIsManagerReturnsFalseForEmployee(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('employee');
-        $this->assertFalse($accessControl->isManager($jwt));
-    }
-
-    public function testIsEmployeeFromRequestExtractsJwtAndChecksRole(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('employee');
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getHeaderLine')->with('Authorization')->willReturn('Bearer ' . $jwt);
-        $this->assertTrue($accessControl->isEmployeeFromRequest($request));
-    }
-
-    public function testIsManagerFromRequestExtractsJwtAndChecksRole(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('manager');
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getHeaderLine')->with('Authorization')->willReturn('Bearer ' . $jwt);
-        $this->assertTrue($accessControl->isManagerFromRequest($request));
-    }
-
-    public function testGetAuthenticatedUserModelFromRequestReturnsUser(): void
-    {
-        [$jwt, $accessControl] = $this->createJwtForRole('employee');
-
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getHeaderLine')->with('Authorization')->willReturn('Bearer ' . $jwt);
-        $this->assertSame([
-            'id' => 1,
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'role' => 'employee',
-        ], $accessControl->getAuthenticatedUserModelFromRequest($request)->toArray());
-    }
-
-    public function testExtractJwtFromRequestThrowsOnMissingHeader(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        [, $accessControl] = $this->createJwtForRole('employee');
-
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
-        $accessControl->isEmployeeFromRequest($request);
-    }
-
-    public function testExtractJwtFromRequestThrowsOnInvalidHeader(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        [, $accessControl] = $this->createJwtForRole('employee');
-
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getHeaderLine')->with('Authorization')->willReturn('Token abc');
-        $accessControl->isManagerFromRequest($request);
     }
 }

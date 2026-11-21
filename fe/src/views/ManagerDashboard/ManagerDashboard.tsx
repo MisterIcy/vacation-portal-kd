@@ -3,16 +3,18 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@emotion/react';
 import { getVacations } from '@domains/vacations/api';
+import { vacationKeys } from '@domains/vacations/queryKeys';
 import { getUsers } from '@domains/users/api';
 import { Layout } from '@components/Layout';
+import { UserDirectory } from '@components/UserDirectory';
 import type { Theme } from '@styles/theme';
 import { managerDashboardStyles } from './ManagerDashboard.styles';
 
 export const ManagerDashboard = () => {
   const theme = useTheme() as Theme;
-  const { data: vacations } = useQuery({
-    queryKey: ['vacations'],
-    queryFn: getVacations,
+  const { data: pendingVacations } = useQuery({
+    queryKey: vacationKeys.list('pending'),
+    queryFn: () => getVacations('pending'),
   });
 
   const { data: users } = useQuery({
@@ -20,7 +22,7 @@ export const ManagerDashboard = () => {
     queryFn: getUsers,
   });
 
-  const pendingCount = vacations?.filter(v => v.status === 'pending').length || 0;
+  const pendingCount = pendingVacations?.length ?? 0;
   const totalUsers = users?.length || 0;
   const employeeCount = users?.filter(u => u.role === 'employee').length || 0;
 
@@ -59,17 +61,17 @@ export const ManagerDashboard = () => {
               View Requests
             </Link>
           </div>
+        </div>
 
-          <div className="manager-dashboard__action-card">
-            <h3 className="manager-dashboard__action-title">Manage Users</h3>
-            <p className="manager-dashboard__action-description">
-              Add, edit, or remove users from the system.
-            </p>
-            <Link to="/users" className="manager-dashboard__action-button">
-              Manage Users
+        <section className="manager-dashboard__users" aria-labelledby="users-title">
+          <div className="manager-dashboard__section-header">
+            <h3 id="users-title" className="manager-dashboard__section-title">Users</h3>
+            <Link to="/users/new" className="manager-dashboard__action-button">
+              Create user
             </Link>
           </div>
-        </div>
+          <UserDirectory />
+        </section>
       </div>
     </Layout>
   );

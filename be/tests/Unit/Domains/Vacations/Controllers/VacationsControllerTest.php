@@ -4,297 +4,332 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domains\Vacations\Controllers;
 
-use App\Domains\Authentication\Models\AuthenticatedUserModel;
 use App\Domains\Authentication\Services\AccessControlService;
 use App\Domains\Vacations\Controllers\VacationsController;
-use App\Domains\Vacations\Models\VacationModel;
-use App\Domains\Vacations\Models\VacationStatus;
-use App\Domains\Vacations\Repositories\VacationsRepository;
-use App\Domains\Users\Models\UserRole;
+use App\Domains\Vacations\Models\EmployeeSummary;
+use App\Domains\Vacations\Models\VacationRequest;
+use App\Domains\Vacations\Models\StatusFilter;
+use App\Domains\Vacations\Services\CancelVacation;
+use App\Domains\Vacations\Services\DecideVacation;
+use App\Domains\Vacations\Services\ListVacations;
+use App\Domains\Vacations\Services\RequestVacation;
+use App\Shared\AccessDenied;
+use App\Shared\Events\EventDispatcher;
+use App\Shared\Events\VacationApprovedEvent;
+use App\Shared\Events\VacationRejectedEvent;
+use App\Shared\Notifications\VacationDecision;
 use App\Shared\ModelCollection;
-use DateInterval;
-use DateMalformedStringException;
+use App\Shared\Principal;
 use DateTime;
+use DateTimeInterface;
+use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\ServerRequest;
-use Laminas\Diactoros\Response\JsonResponse;
 use Laminas\Diactoros\Stream;
-use League\Route\Http\Exception\ForbiddenException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * The controller only translates HTTP to a use case call and back; the rules are tested with the
+ * use cases (VacationUseCasesTest, RequestVacationTest) and the vacation request itself.
+ */
 class VacationsControllerTest extends TestCase
 {
-    /**
-     * @throws DateMalformedStringException
-     */
-    public function testListAsManager(): void
-    {
-        $collection = new ModelCollection();
-        $collection->add($this->createMock(VacationModel::class));
-        $serverRequest = $this->createMock(ServerRequest::class);
-        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->expects($this->once())
-            ->method('findPendingRequests')
-            ->willReturn($collection);
+    private Principal $caller;
+    /** @var ListVacations&MockObject */
+    private ListVacations $listVacations;
+    /** @var RequestVacation&MockObject */
+    private RequestVacation $requestVacation;
+    /** @var DecideVacation&MockObject */
+    private DecideVacation $decideVacation;
+    /** @var CancelVacation&MockObject */
+    private CancelVacation $cancelVacation;
+    /** @var EventDispatcher&MockObject */
+    private EventDispatcher $events;
+    private ServerRequest $request;
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->list($serverRequest);
-        $this->assertInstanceOf(JsonResponse::class, $response);
+    protected function setUp(): void
+    {
+        $this->caller = Principal::employee(1);
+        $this->listVacations = $this->createMock(ListVacations::class);
+        $this->requestVacation = $this->createMock(RequestVacation::class);
+        $this->decideVacation = $this->createMock(DecideVacation::class);
+        $this->cancelVacation = $this->createMock(CancelVacation::class);
+        $this->events = $this->createMock(EventDispatcher::class);
+        $this->request = new ServerRequest();
+    }
+
+    public function testListReturnsWhatTheUseCaseReturnsForTheCaller(): void
+    {
+        $this->listVacations->expects($this->once())->method('__invoke')->with($this->caller, null)->willReturn(new ModelCollection());
+
+        $response = $this->controller()->list($this->request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('[]', (string) $response->getBody());
+    }
+
+    #[DataProvider('statusFilters')]
+    public function testListPassesTheRequestedStatusFilter(string $query, StatusFilter $expected): void
+    {
+        $this->listVacations->expects($this->once())
+            ->method('__invoke')
+            ->with($this->caller, $expected)
+            ->willReturn(new ModelCollection());
+
+        $response = $this->controller()->list($this->request->withQueryParams(['status' => $query]));
+
         $this->assertSame(200, $response->getStatusCode());
     }
 
     /**
-     * @throws DateMalformedStringException
+     * @return array<string, array{string, StatusFilter}>
      */
-    public function testListAsEmployee(): void
+    public static function statusFilters(): array
     {
-        $collection = new ModelCollection();
-        $collection->add($this->createMock(VacationModel::class));
-        $serverRequest = $this->createMock(ServerRequest::class);
-        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->expects($this->once())
-            ->method('findUserRequests')
-            ->with(1)
-            ->willReturn($collection);
-
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->list($serverRequest);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(200, $response->getStatusCode());
+        return [
+            'pending' => ['pending', StatusFilter::Pending],
+            'approved' => ['approved', StatusFilter::Approved],
+            'rejected' => ['rejected', StatusFilter::Rejected],
+            'all' => ['all', StatusFilter::All],
+        ];
     }
 
     /**
-     * @throws JsonException|ForbiddenException|DateMalformedStringException
+     * @param array<string, mixed> $query
      */
-    public function testCreate(): void
+    #[DataProvider('invalidStatusFilters')]
+    public function testListRejectsAStatusFilterItDoesNotKnow(array $query): void
     {
-        $expectedStartDate = new DateTime()->add(new DateInterval('P1D'));
-        $expectedEndDate = new DateTime()->add(new DateInterval('P2D'));
-        $expectedReason = 'Holiday';
+        $this->listVacations->expects($this->never())->method('__invoke');
 
-        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'status' must be one of: pending, approved, rejected, all.");
 
-        $expectedVacation = new VacationModel(
-            null,
-            1,
-            null,
-            $expectedStartDate,
-            $expectedEndDate,
-            $expectedReason,
-        );
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->expects($this->once())
-            ->method('create')
-            ->with($this->callback(function ($param) use (
-                $expectedStartDate,
-                $expectedEndDate,
-                $expectedReason,
-            ) {
-                return $param instanceof VacationModel
-                    && $param->getUserId() === 1
-                    && $param->getFrom()->format('Y-m-d') === $expectedStartDate->format('Y-m-d')
-                    && $param->getTo()->format('Y-m-d') === $expectedEndDate->format('Y-m-d')
-                    && $param->getReason() === $expectedReason;
-            }))
-            ->willReturn($expectedVacation);
+        $this->controller()->list($this->request->withQueryParams($query));
+    }
 
-        $body = new Stream('php://temp', 'rw');
-        $body->write(json_encode([
-            'from' => $expectedStartDate->format('Y-m-d'),
-            'to' => $expectedEndDate->format('Y-m-d'),
-            'reason' => $expectedReason,
-        ], JSON_THROW_ON_ERROR));
-        $request = new ServerRequest([], [], null, null, $body);
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function invalidStatusFilters(): array
+    {
+        return [
+            'an unknown word' => [['status' => 'everything']],
+            'the wrong case' => [['status' => 'PENDING']],
+            'empty' => [['status' => '']],
+            'a list instead of a value' => [['status' => ['pending', 'approved']]],
+        ];
+    }
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->create($request);
-        $this->assertInstanceOf(JsonResponse::class, $response);
+    public function testApproveCallsTheUseCaseWithTheCallerAndTheId(): void
+    {
+        $this->decideVacation->expects($this->once())->method('approve')->with($this->caller, 5)->willReturn($this->vacation());
+
+        $response = $this->controller()->approve($this->request, ['id' => 5]);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('"reason":"Holiday"', (string) $response->getBody());
+    }
+
+    public function testRejectCallsTheUseCaseWithTheCallerAndTheId(): void
+    {
+        $this->decideVacation->expects($this->once())->method('reject')->with($this->caller, 6)->willReturn($this->vacation());
+
+        $this->assertSame(200, $this->controller()->reject($this->request, ['id' => 6])->getStatusCode());
+    }
+
+    public function testCreateParsesTheBodyAndReturns201(): void
+    {
+        $this->requestVacation->expects($this->once())
+            ->method('__invoke')
+            ->with(
+                $this->caller,
+                $this->callback(fn ($from) => $from instanceof DateTimeInterface && $from->format('Y-m-d') === '2026-07-01'),
+                $this->callback(fn ($to) => $to instanceof DateTimeInterface && $to->format('Y-m-d') === '2026-07-03'),
+                'Holiday',
+            )
+            ->willReturn($this->vacation());
+
+        $response = $this->controller()->create($this->withBody('{"from":"2026-07-01","to":"2026-07-03","reason":"Holiday"}'));
+
         $this->assertSame(201, $response->getStatusCode());
-
-        /** @var array<string, string> $responseData */
-        $responseData = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame($expectedVacation->getReason(), $responseData['reason']);
+        $this->assertStringContainsString('"reason":"Holiday"', (string) $response->getBody());
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testApprove(): void
+    public function testCreateRejectsAMalformedBodyBeforeCallingTheUseCase(): void
     {
-        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
+        $this->requestVacation->expects($this->never())->method('__invoke');
 
-        $pendingVacation = $this->createMock(VacationModel::class);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $updatedVacation = $this->createMock(VacationModel::class);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(5)->willReturn($pendingVacation);
-        $vacationsRepository->method('updateStatus')->with(5, 1, VacationStatus::Approved)->willReturn($updatedVacation);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'from' is required.");
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->approve($this->createMock(ServerRequest::class), ['id' => 5]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(200, $response->getStatusCode());
+        $this->controller()->create($this->withBody('{"to":"2026-07-03","reason":"Holiday"}'));
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testReject(): void
+    public function testCreateRejectsInvalidJson(): void
     {
-        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
+        $this->expectException(JsonException::class);
 
-        $pendingVacation = $this->createMock(VacationModel::class);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $updatedVacation = $this->createMock(VacationModel::class);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(5)->willReturn($pendingVacation);
-        $vacationsRepository->method('updateStatus')->with(5, 1, VacationStatus::Rejected)->willReturn($updatedVacation);
-
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->reject($this->createMock(ServerRequest::class), ['id' => 5]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(200, $response->getStatusCode());
+        $this->controller()->create($this->withBody('{not json'));
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testDeleteSuccess(): void
+    public function testDeleteCallsTheUseCaseAndReturns204(): void
     {
-        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
+        $this->cancelVacation->expects($this->once())->method('__invoke')->with($this->caller, 7);
 
-        $pendingVacation = $this->createMock(VacationModel::class);
-        $pendingVacation->method('getUserId')->willReturn(1);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(7)->willReturn($pendingVacation);
-        $vacationsRepository->expects($this->once())
-            ->method('delete')
-            ->with(7);
-
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->delete($this->createMock(ServerRequest::class), ['id' => 7]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(204, $response->getStatusCode());
+        $this->assertSame(204, $this->controller()->delete($this->request, ['id' => 7])->getStatusCode());
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testDeleteUnauthorized(): void
+    public function testARefusalFromAUseCaseIsNotSwallowed(): void
     {
-        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
+        $this->decideVacation->method('approve')->willThrowException(AccessDenied::forRole());
 
-        $pendingVacation = $this->createMock(VacationModel::class);
-        $pendingVacation->method('getUserId')->willReturn(99);
-        $pendingVacation->method('getStatus')->willReturn(VacationStatus::Pending);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(8)->willReturn($pendingVacation);
+        $this->expectException(AccessDenied::class);
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->delete($this->createMock(ServerRequest::class), ['id' => 8]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(400, $response->getStatusCode());
+        $this->controller()->approve($this->request, ['id' => 5]);
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testDeleteNonPending(): void
+    // ---- Notifications ----------------------------------------------------------------------
+
+    public function testApprovingDispatchesAnApprovedEventForTheEmployee(): void
     {
-        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
+        $this->decideVacation->method('approve')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->callback(function ($event) {
+            $n = $event instanceof VacationApprovedEvent ? $event->notification : null;
 
-        $approvedVacation = $this->createMock(VacationModel::class);
-        $approvedVacation->method('getUserId')->willReturn(1);
-        $approvedVacation->method('getStatus')->willReturn(VacationStatus::Approved);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(9)->willReturn($approvedVacation);
+            return $n !== null
+                && $n->decision === VacationDecision::Approved
+                && $n->recipientId === 2
+                && $n->recipientName === 'Ada Lovelace'
+                && $n->recipientEmail === 'ada@example.com'
+                && $n->vacationId === 5
+                && $n->from->format('Y-m-d') === '2026-07-01'
+                && $n->to->format('Y-m-d') === '2026-07-03'
+                && $n->days === 3
+                && $n->reason === 'Holiday'
+                && $n->message === null;
+        }));
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->delete($this->createMock(ServerRequest::class), ['id' => 9]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(400, $response->getStatusCode());
+        $this->assertSame(200, $this->controller()->approve($this->request, ['id' => 5])->getStatusCode());
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException|JsonException
-     */
-    public function testDeleteForbidden(): void
+    public function testRejectingDispatchesARejectedEvent(): void
     {
-        $this->expectException(ForbiddenException::class);
+        $this->decideVacation->method('reject')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->isInstanceOf(VacationRejectedEvent::class));
 
-        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $controller->delete($this->createMock(ServerRequest::class), ['id' => 9]);
+        $this->assertSame(200, $this->controller()->reject($this->request, ['id' => 5])->getStatusCode());
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException|JsonException
-     */
-    public function testCreateForbidden(): void
+    public function testTheManagersMessageTravelsInTheEvent(): void
     {
-        $this->expectException(ForbiddenException::class);
+        $this->decideVacation->method('reject')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->callback(
+            fn ($event) => $event instanceof VacationRejectedEvent && $event->notification->message === 'Team is short that week.'
+        ));
 
-        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $controller->create($this->createMock(ServerRequest::class));
+        $this->controller()->reject($this->withBody('{"message":"Team is short that week."}'), ['id' => 5]);
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testApproveNonPending(): void
+    public function testNothingIsDispatchedWhenTheDecisionFails(): void
     {
-        $accessControl = $this->getMockAccessControlService(UserRole::Manager);
+        $this->decideVacation->method('approve')->willThrowException(AccessDenied::forRole());
+        $this->events->expects($this->never())->method('dispatch');
 
-        $approvedVacation = $this->createMock(VacationModel::class);
-        $approvedVacation->method('getStatus')->willReturn(VacationStatus::Approved);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
-        $vacationsRepository->method('findById')->with(10)->willReturn($approvedVacation);
+        $this->expectException(AccessDenied::class);
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $response = $controller->approve($this->createMock(ServerRequest::class), ['id' => 10]);
-        $this->assertInstanceOf(JsonResponse::class, $response);
-        $this->assertSame(400, $response->getStatusCode());
+        $this->controller()->approve($this->request, ['id' => 5]);
     }
 
-    /**
-     * @throws ForbiddenException|DateMalformedStringException
-     */
-    public function testApproveForbidden(): void
+    public function testATooLongMessageIsRefusedBeforeAnythingIsDecided(): void
     {
-        $this->expectException(ForbiddenException::class);
+        $this->decideVacation->expects($this->never())->method('approve');
+        $this->events->expects($this->never())->method('dispatch');
 
-        $accessControl = $this->getMockAccessControlService(UserRole::Employee);
-        $vacationsRepository = $this->createMock(VacationsRepository::class);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'message' must be at most 500 characters.");
 
-        $controller = new VacationsController($vacationsRepository, $accessControl);
-        $controller->approve($this->createMock(ServerRequest::class), ['id' => 10]);
+        $this->controller()->approve($this->withBody('{"message":"' . str_repeat('x', 501) . '"}'), ['id' => 5]);
     }
 
-    private function getMockAccessControlService(UserRole $role): AccessControlService
+    public function testAMessageWithAControlCharacterIsRefusedBeforeAnythingIsDecided(): void
     {
-        $authenticatedUser = new AuthenticatedUserModel(
-            1,
-            'John Doe',
-            'user@example.com',
-            $role,
+        $this->decideVacation->expects($this->never())->method('approve');
+        $this->events->expects($this->never())->method('dispatch');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'message' must be text without control characters (line breaks are allowed).");
+
+        $this->controller()->approve($this->withBody('{"message":"Enjoy\u0000"}'), ['id' => 5]);
+    }
+
+    public function testAMessageMayRunOverSeveralLines(): void
+    {
+        $this->decideVacation->method('reject')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->callback(
+            fn ($event) => $event instanceof VacationRejectedEvent && $event->notification->message === "Line one\nLine two"
+        ));
+
+        $this->controller()->reject($this->withBody('{"message":"Line one\nLine two"}'), ['id' => 5]);
+    }
+
+    public function testAMessageThatIsNotAStringIsRefusedBeforeAnythingIsDecided(): void
+    {
+        $this->decideVacation->expects($this->never())->method('reject');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'message' must be a string.");
+
+        $this->controller()->reject($this->withBody('{"message":42}'), ['id' => 5]);
+    }
+
+    public function testARequestWithoutAnEmployeeAttachedIsDecidedButNobodyIsNotified(): void
+    {
+        $this->decideVacation->method('approve')->willReturn($this->vacation());
+        $this->events->expects($this->never())->method('dispatch');
+
+        $this->assertSame(200, $this->controller()->approve($this->request, ['id' => 5])->getStatusCode());
+    }
+
+    private function decidedVacation(): VacationRequest
+    {
+        return new VacationRequest(
+            5,
+            2,
+            new EmployeeSummary(2, 'Ada Lovelace', 'ada@example.com', '1234567', 'employee'),
+            new DateTime('2026-07-01'),
+            new DateTime('2026-07-03'),
+            'Holiday',
         );
+    }
 
-        $isManager = $role === UserRole::Manager;
-        $isEmployee = $role === UserRole::Employee;
+    private function controller(): VacationsController
+    {
+        $accessControl = $this->createMock(AccessControlService::class);
+        $accessControl->method('principalFromRequest')->willReturn($this->caller);
 
-        $accessControlService = $this->createMock(AccessControlService::class);
-        $accessControlService->method('isManagerFromRequest')->willReturn($isManager);
-        $accessControlService->method('isEmployeeFromRequest')->willReturn($isEmployee);
-        $accessControlService->method('getAuthenticatedUserModelFromRequest')->willReturn($authenticatedUser);
+        return new VacationsController(
+            $accessControl,
+            $this->listVacations,
+            $this->requestVacation,
+            $this->decideVacation,
+            $this->cancelVacation,
+            $this->events,
+        );
+    }
 
-        return $accessControlService;
+    private function withBody(string $json): ServerRequest
+    {
+        $body = new Stream('php://temp', 'rw');
+        $body->write($json);
+
+        return new ServerRequest([], [], null, null, $body);
+    }
+
+    private function vacation(): VacationRequest
+    {
+        return new VacationRequest(5, 1, null, new DateTime('2026-07-01'), new DateTime('2026-07-03'), 'Holiday');
     }
 }

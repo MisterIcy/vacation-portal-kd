@@ -8,8 +8,6 @@ export const NotFound = () => {
   const theme = useTheme() as Theme;
   const location = useLocation();
 
-  console.log('404 Page Rendered - Path:', location.pathname);
-
   return (
     <div css={notFoundStyles(theme)}>
       <h1 className="not-found__error-code">404</h1>
