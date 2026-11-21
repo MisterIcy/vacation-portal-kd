@@ -159,6 +159,15 @@ describe('API › Authorization matrix', () => {
       });
     });
 
+    it('X-08 a body larger than a few kilobytes is refused with 413 before the application reads it', () => {
+      const huge = { email: 'a@b.c', password: 'a'.repeat(20000) };
+
+      cy.request({ method: 'POST', url: '/api/auth/login', body: huge, failOnStatusCode: false }).its('status').should('eq', 413);
+      cy.apiAs('manager', { method: 'POST', url: '/api/users', body: { name: 'x'.repeat(20000) } }).its('status').should('eq', 413);
+      // A normal request is unaffected.
+      cy.apiAs('employee', { method: 'GET', url: '/api/vacations' }).its('status').should('eq', 200);
+    });
+
     it('X-04 an error carries a status and a phrase, and nothing about the server inside', () => {
       cy.apiAs('manager', { method: 'GET', url: '/api/users/999999999' }).then((response) => {
         expect(response.status).to.eq(404);
