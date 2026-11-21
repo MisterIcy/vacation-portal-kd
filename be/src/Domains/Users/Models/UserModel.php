@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Users\Models;
 
 use App\Shared\DateTimes;
+use App\Shared\PasswordPolicy;
 use DateTime;
 use InvalidArgumentException;
 use JsonSerializable;
@@ -76,6 +77,10 @@ readonly class UserModel implements JsonSerializable
 
         if ($password !== null && strlen($password) < 8) {
             throw new InvalidArgumentException('Password must be at least 8 characters if provided.');
+        }
+
+        if ($password !== null) {
+            PasswordPolicy::assertNotTooLong($password);
         }
 
         if (empty(trim($name))) {

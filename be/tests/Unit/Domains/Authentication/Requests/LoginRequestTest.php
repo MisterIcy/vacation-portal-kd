@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Domains\Authentication\Requests;
 
 use App\Domains\Authentication\Requests\LoginRequest;
+use App\Shared\PasswordPolicy;
 use InvalidArgumentException;
 use JsonException;
 use Laminas\Diactoros\ServerRequest;
@@ -28,6 +29,26 @@ class LoginRequestTest extends TestCase
 
         $this->assertSame('ada@example.com', $login->getEmail());
         $this->assertSame('secret123', $login->getPassword());
+    }
+
+    public function testAPasswordOfExactlyTheLimitIsRead(): void
+    {
+        $password = str_repeat('a', PasswordPolicy::MAX_BYTES);
+
+        $login = new LoginRequest($this->request(json_encode(['email' => 'ada@example.com', 'password' => $password], JSON_THROW_ON_ERROR)));
+
+        $this->assertSame($password, $login->getPassword());
+    }
+
+    public function testAPasswordOverTheLimitIsRefusedBeforeAnythingCanHashIt(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Password must be at most 1024 bytes.');
+
+        new LoginRequest($this->request(json_encode(
+            ['email' => 'ada@example.com', 'password' => str_repeat('a', PasswordPolicy::MAX_BYTES + 1)],
+            JSON_THROW_ON_ERROR,
+        )));
     }
 
     public function testAnEmptyPasswordIsStillAStringAndLeftToTheCredentialCheck(): void

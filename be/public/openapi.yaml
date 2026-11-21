@@ -409,7 +409,7 @@ components:
           type: string
           example: john.doe@example.com
         password:
-          description: "The user's password"
+          description: "The user's password (at most 1024 bytes)"
           type: string
           format: password
           example: SecureP@ss123
@@ -469,6 +469,7 @@ components:
           format: email
           example: john.doe@example.com
         password:
+          description: 'At least 8 characters and at most 1024 bytes.'
           type: string
           format: password
           minLength: 8
@@ -494,6 +495,7 @@ components:
           format: email
           example: john.doe@example.com
         password:
+          description: 'At least 8 characters and at most 1024 bytes.'
           type: string
           format: password
           minLength: 8

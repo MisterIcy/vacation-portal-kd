@@ -22,7 +22,7 @@ use Psr\Http\Message\ServerRequestInterface;
     required: ['email', 'password', 'name', 'employee_code'],
     properties: [
         new OA\Property(property: 'email', type: 'string', format: 'email', example: 'john.doe@example.com'),
-        new OA\Property(property: 'password', type: 'string', format: 'password', minLength: 8, example: 'SecureP@ss123'),
+        new OA\Property(property: 'password', description: 'At least 8 characters and at most 1024 bytes.', type: 'string', format: 'password', minLength: 8, example: 'SecureP@ss123'),
         new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
         new OA\Property(property: 'employee_code', description: 'Seven digits.', type: 'string', pattern: '^\d{7}$', example: '1234567'),
         new OA\Property(property: 'role', ref: '#/components/schemas/UserRole', description: 'Defaults to employee.'),

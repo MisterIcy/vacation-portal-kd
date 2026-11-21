@@ -64,6 +64,21 @@ class UserModelTest extends TestCase
         new UserModel(1, 'test@example.com', 'short', 'John Doe', '1234567', UserRole::Employee);
     }
 
+    public function testAPasswordOfExactlyTheMaximumLengthIsAccepted(): void
+    {
+        $user = new UserModel(1, 'test@example.com', str_repeat('a', 1024), 'John Doe', '1234567', UserRole::Employee);
+
+        $this->assertSame(1024, strlen((string) $user->getPassword()));
+    }
+
+    public function testAPasswordLongerThanTheMaximumIsRefused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Password must be at most 1024 bytes.');
+
+        new UserModel(1, 'test@example.com', str_repeat('a', 1025), 'John Doe', '1234567', UserRole::Employee);
+    }
+
     public function testEmptyNameThrowsException(): void
     {
         $this->expectException(InvalidArgumentException::class);

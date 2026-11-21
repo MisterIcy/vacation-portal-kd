@@ -159,6 +159,21 @@ describe('API › Authorization matrix', () => {
       });
     });
 
+    it('X-09 a password of 1024 bytes works for creating a user and logging in; 1025 is refused everywhere', () => {
+      const n = Cypress._.random(1000000, 9999999);
+      const user = { name: `QA Long ${n}`, email: `qa.long.${n}@example.com`, employee_code: String(n), password: 'p'.repeat(1024) };
+
+      cy.apiAs('manager', { method: 'POST', url: '/api/users', body: { ...user, password: 'p'.repeat(1025) } }).its('status').should('eq', 400);
+      cy.apiAs('manager', { method: 'POST', url: '/api/users', body: user }).then((response) => {
+        expect(response.status).to.eq(201);
+        cy.request({ method: 'POST', url: '/api/auth/login', body: { email: user.email, password: user.password } }).its('status').should('eq', 200);
+        cy.request({ method: 'POST', url: '/api/auth/login', body: { email: user.email, password: 'p'.repeat(1025) }, failOnStatusCode: false })
+          .its('status')
+          .should('eq', 400);
+        cy.apiAs('manager', { method: 'DELETE', url: `/api/users/${response.body.id}` });
+      });
+    });
+
     it('X-08 a body larger than a few kilobytes is refused with 413 before the application reads it', () => {
       const huge = { email: 'a@b.c', password: 'a'.repeat(20000) };
 

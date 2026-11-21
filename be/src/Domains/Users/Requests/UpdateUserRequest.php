@@ -21,7 +21,7 @@ use Psr\Http\Message\ServerRequestInterface;
     type: 'object',
     properties: [
         new OA\Property(property: 'email', type: 'string', format: 'email', example: 'john.doe@example.com'),
-        new OA\Property(property: 'password', type: 'string', format: 'password', minLength: 8, example: 'SecureP@ss123'),
+        new OA\Property(property: 'password', description: 'At least 8 characters and at most 1024 bytes.', type: 'string', format: 'password', minLength: 8, example: 'SecureP@ss123'),
         new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
         new OA\Property(property: 'role', ref: '#/components/schemas/UserRole', description: 'A manager cannot change their own role.'),
     ],
