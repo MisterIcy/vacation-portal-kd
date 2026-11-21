@@ -63,6 +63,10 @@ class UserRequestsTest extends TestCase
             'missing employee code' => [array_diff_key($valid, ['employee_code' => 1]), "'employee_code' is required."],
             'numeric employee code' => [[...$valid, 'employee_code' => 1234567], "'employee_code' must be a string."],
             'array name' => [[...$valid, 'name' => ['Ann']], "'name' must be a string."],
+            'name with a line break' => [[...$valid, 'name' => "Ann\r\nBcc: x@example.com"], "'name' must be one line of text without control characters."],
+            'name with a tab' => [[...$valid, 'name' => "Ann\tLee"], "'name' must be one line of text without control characters."],
+            'name with a NUL' => [[...$valid, 'name' => "Ann\0"], "'name' must be one line of text without control characters."],
+            'name with a Unicode line separator' => [[...$valid, 'name' => "Ann\u{2028}Lee"], "'name' must be one line of text without control characters."],
             'unknown role' => [[...$valid, 'role' => 'admin'], "'role' must be one of: manager, employee."],
             'role of the wrong type' => [[...$valid, 'role' => 1], "'role' must be a string."],
         ];
@@ -116,6 +120,7 @@ class UserRequestsTest extends TestCase
         return [
             'numeric password' => [['password' => 123456789], "'password' must be a string."],
             'numeric name' => [['name' => 42], "'name' must be a string."],
+            'name with a line break' => [['name' => "Ann\nLee"], "'name' must be one line of text without control characters."],
             'unknown role' => [['role' => 'superuser'], "'role' must be one of: manager, employee."],
         ];
     }

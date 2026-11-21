@@ -254,6 +254,27 @@ class VacationsControllerTest extends TestCase
         $this->controller()->approve($this->withBody('{"message":"' . str_repeat('x', 501) . '"}'), ['id' => 5]);
     }
 
+    public function testAMessageWithAControlCharacterIsRefusedBeforeAnythingIsDecided(): void
+    {
+        $this->decideVacation->expects($this->never())->method('approve');
+        $this->events->expects($this->never())->method('dispatch');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'message' must be text without control characters (line breaks are allowed).");
+
+        $this->controller()->approve($this->withBody('{"message":"Enjoy\u0000"}'), ['id' => 5]);
+    }
+
+    public function testAMessageMayRunOverSeveralLines(): void
+    {
+        $this->decideVacation->method('reject')->willReturn($this->decidedVacation());
+        $this->events->expects($this->once())->method('dispatch')->with($this->callback(
+            fn ($event) => $event instanceof VacationRejectedEvent && $event->notification->message === "Line one\nLine two"
+        ));
+
+        $this->controller()->reject($this->withBody('{"message":"Line one\nLine two"}'), ['id' => 5]);
+    }
+
     public function testAMessageThatIsNotAStringIsRefusedBeforeAnythingIsDecided(): void
     {
         $this->decideVacation->expects($this->never())->method('reject');

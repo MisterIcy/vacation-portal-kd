@@ -203,6 +203,21 @@ describe('API › Authorization matrix', () => {
       });
     });
 
+    it('EMP-CRT-11 accepts a reason on several lines and refuses one with a control character', () => {
+      create({ from: isoInDays(30), to: isoInDays(31), reason: 'First line\nSecond line' }).its('status').should('eq', 201);
+      create({ from: isoInDays(40), to: isoInDays(41), reason: 'Trip\u0000' }).then((response) => {
+        expect(response.status).to.eq(400);
+        expect(response.body.reason_phrase).to.contain('control characters');
+      });
+    });
+
+    it('MGR-CRT-07 a name must be one line, when creating and when updating a user', () => {
+      const n = Cypress._.random(1000000, 9999999);
+      const user = { name: 'Line\r\nBreak', email: `qa.line.${n}@example.com`, employee_code: String(n), password: 'Password123' };
+      cy.apiAs('manager', { method: 'POST', url: '/api/users', body: user }).its('status').should('eq', 400);
+      cy.apiAs('manager', { method: 'PUT', url: `/api/users/${employee.id}`, body: { name: 'Line\nBreak' } }).its('status').should('eq', 400);
+    });
+
     it('EMP-CRT-07 refuses a start date in the past', () => {
       create({ from: isoInDays(-5), to: isoInDays(-3), reason: 'Past' }).its('status').should('eq', 400);
     });

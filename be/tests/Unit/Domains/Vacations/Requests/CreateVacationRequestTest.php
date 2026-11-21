@@ -26,6 +26,15 @@ class CreateVacationRequestTest extends TestCase
         $this->assertSame('Summer holiday', $request->getReason(), 'the reason is trimmed');
     }
 
+    public function testAReasonMayRunOverSeveralLinesBecauseTheFormIsATextArea(): void
+    {
+        $request = CreateVacationRequest::fromRequest(
+            $this->requestWithBody('{"from":"2026-07-01","to":"2026-07-02","reason":"Line one\r\n\tindented line two"}')
+        );
+
+        $this->assertSame("Line one\r\n\tindented line two", $request->getReason());
+    }
+
     public function testAcceptsAReasonOfExactlyTheMaximumLength(): void
     {
         $reason = str_repeat('x', CreateVacationRequest::MAX_REASON_LENGTH);
@@ -83,6 +92,9 @@ class CreateVacationRequestTest extends TestCase
             'array reason' => [[...$valid, 'reason' => ['a']], "'reason' must be a string."],
             'empty reason' => [[...$valid, 'reason' => ''], "'reason' must not be empty."],
             'blank reason' => [[...$valid, 'reason' => "   \n"], "'reason' must not be empty."],
+            'reason with a NUL' => [[...$valid, 'reason' => "Trip\0"], "'reason' must be text without control characters (line breaks are allowed)."],
+            'reason with an escape character' => [[...$valid, 'reason' => "Trip\x1b[31m"], "'reason' must be text without control characters (line breaks are allowed)."],
+            'reason with a delete character' => [[...$valid, 'reason' => "Trip\x7f"], "'reason' must be text without control characters (line breaks are allowed)."],
             'reason one character too long' => [
                 [...$valid, 'reason' => str_repeat('x', CreateVacationRequest::MAX_REASON_LENGTH + 1)],
                 "'reason' must be at most 255 characters.",

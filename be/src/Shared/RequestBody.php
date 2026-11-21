@@ -19,6 +19,12 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final readonly class RequestBody
 {
+    /** Any control character, and the Unicode line and paragraph separators. */
+    private const string CONTROL_IN_LINE = '/[\p{Cc}\x{2028}\x{2029}]/u';
+
+    /** A control character other than a tab or a line break. */
+    private const string CONTROL_IN_TEXT = '/[^\P{Cc}\t\r\n]/u';
+
     /**
      * @param array<string, mixed> $data
      */
@@ -67,6 +73,47 @@ final readonly class RequestBody
     }
 
     /**
+     * A name, a title: one line of text. Any control character, including a line break, is refused,
+     * because such text ends up in lists, logs and emails where a line break changes the meaning.
+     *
+     * @throws InvalidArgumentException when the field is missing, not a string or has a control character
+     */
+    public function requiredLine(string $field): string
+    {
+        return $this->checked($field, $this->requiredString($field), self::CONTROL_IN_LINE, 'one line of text without control characters');
+    }
+
+    /**
+     * @throws InvalidArgumentException when the field is not a string or has a control character
+     */
+    public function optionalLine(string $field): ?string
+    {
+        $value = $this->optionalString($field);
+
+        return $value === null ? null : $this->checked($field, $value, self::CONTROL_IN_LINE, 'one line of text without control characters');
+    }
+
+    /**
+     * Free text such as a reason: line breaks and tabs are fine, other control characters are not.
+     *
+     * @throws InvalidArgumentException when the field is missing, not a string or has a control character
+     */
+    public function requiredText(string $field): string
+    {
+        return $this->checked($field, $this->requiredString($field), self::CONTROL_IN_TEXT, 'text without control characters (line breaks are allowed)');
+    }
+
+    /**
+     * @throws InvalidArgumentException when the field is not a string or has a control character
+     */
+    public function optionalText(string $field): ?string
+    {
+        $value = $this->optionalString($field);
+
+        return $value === null ? null : $this->checked($field, $value, self::CONTROL_IN_TEXT, 'text without control characters (line breaks are allowed)');
+    }
+
+    /**
      * A string field that must be one of an enum's values (e.g. a role).
      *
      * @template T of BackedEnum
@@ -107,6 +154,18 @@ final readonly class RequestBody
         }
 
         return $date;
+    }
+
+    /**
+     * @throws InvalidArgumentException when the pattern finds a character that is not allowed (or the text is not valid UTF-8)
+     */
+    private function checked(string $field, string $value, string $forbidden, string $expected): string
+    {
+        if (preg_match($forbidden, $value) !== 0) {
+            throw new InvalidArgumentException("'$field' must be $expected.");
+        }
+
+        return $value;
     }
 
     private function stringValue(string $field): string

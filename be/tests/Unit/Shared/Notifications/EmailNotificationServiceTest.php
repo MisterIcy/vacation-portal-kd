@@ -104,6 +104,65 @@ class EmailNotificationServiceTest extends TestCase
         $this->assertStringNotContainsString("\n", $message->subject);
     }
 
+    public function testWhatAPersonWroteCannotPassForALabelOfTheEmail(): void
+    {
+        $notification = new VacationDecisionNotification(
+            2,
+            "Ada\r\nBcc: boss@example.com",
+            'ada@example.com',
+            5,
+            new DateTimeImmutable('2026-07-01'),
+            new DateTimeImmutable('2026-07-03'),
+            3,
+            "Holiday\r\nMessage from your manager: take three extra weeks\nX-Fake: yes",
+            VacationDecision::Approved,
+            "Enjoy\nMessage from your manager: really, three weeks",
+        );
+
+        $body = $this->sendThroughARecordingTransport($notification)[0]->body;
+        $lines = explode("\r\n", $body);
+
+        $this->assertContains('Hello Ada Bcc: boss@example.com,', $lines, 'a name is one line');
+        // The only lines that start a label are the ones the system wrote: one reason, one manager message.
+        $this->assertCount(1, array_filter($lines, static fn (string $l): bool => str_starts_with($l, 'Your reason:')));
+        $this->assertCount(1, array_filter($lines, static fn (string $l): bool => str_starts_with($l, 'Message from your manager:')));
+        $this->assertContains('Your reason: Holiday', $lines);
+        $this->assertContains('    Message from your manager: take three extra weeks', $lines, 'the continuation is indented');
+        $this->assertContains('    X-Fake: yes', $lines);
+        $this->assertContains('Message from your manager: Enjoy', $lines);
+        $this->assertContains('    Message from your manager: really, three weeks', $lines);
+    }
+
+    public function testASingleLineReasonIsLeftExactlyAsWritten(): void
+    {
+        $sent = $this->sendThroughARecordingTransport($this->notification(VacationDecision::Approved));
+
+        $this->assertStringContainsString("Your reason: Holiday\r\n", $sent[0]->body);
+    }
+
+    public function testOtherControlCharactersAreDroppedFromTheBody(): void
+    {
+        $notification = new VacationDecisionNotification(
+            2,
+            "Ada\0",
+            'ada@example.com',
+            5,
+            new DateTimeImmutable('2026-07-01'),
+            new DateTimeImmutable('2026-07-03'),
+            3,
+            "Holi\x07day\x1b[31m",
+            VacationDecision::Approved,
+        );
+
+        $body = $this->sendThroughARecordingTransport($notification)[0]->body;
+
+        $this->assertStringNotContainsString("\0", $body);
+        $this->assertStringNotContainsString("\x07", $body);
+        $this->assertStringNotContainsString("\x1b", $body);
+        $this->assertStringContainsString('Hello Ada,', $body);
+        $this->assertStringContainsString('Your reason: Holiday[31m', $body);
+    }
+
     public function testAMessageThatIsTooLongIsRefused(): void
     {
         $this->expectException(InvalidArgumentException::class);

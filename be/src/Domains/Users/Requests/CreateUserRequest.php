@@ -50,7 +50,7 @@ final readonly class CreateUserRequest
         return new self(
             strtolower(trim($body->requiredString('email'))),
             $body->requiredString('password'),
-            trim($body->requiredString('name')),
+            trim($body->requiredLine('name')),
             $body->requiredString('employee_code'),
             $body->optionalEnum('role', UserRole::class) ?? UserRole::Employee,
         );

@@ -273,7 +273,7 @@ readonly class VacationsController
             return null;
         }
 
-        $message = RequestBody::fromRequest($request)->optionalString('message');
+        $message = RequestBody::fromRequest($request)->optionalText('message');
         if ($message !== null && mb_strlen(trim($message)) > VacationDecisionNotification::MAX_MESSAGE_LENGTH) {
             throw new InvalidArgumentException("'message' must be at most " . VacationDecisionNotification::MAX_MESSAGE_LENGTH . ' characters.');
         }

@@ -45,7 +45,7 @@ final readonly class UpdateUserRequest
         $body = RequestBody::fromRequest($request);
 
         $email = $body->optionalString('email');
-        $name = $body->optionalString('name');
+        $name = $body->optionalLine('name');
         $password = $body->optionalString('password');
 
         return new self(

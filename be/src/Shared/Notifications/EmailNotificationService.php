@@ -31,7 +31,7 @@ final readonly class EmailNotificationService implements NotificationService
     private function body(VacationDecisionNotification $notification): string
     {
         $lines = [
-            "Hello {$notification->recipientName},",
+            "Hello {$this->oneLine($notification->recipientName)},",
             '',
             sprintf(
                 'Your vacation request #%d from %s to %s (%d %s) has been %s.',
@@ -43,13 +43,40 @@ final readonly class EmailNotificationService implements NotificationService
                 $notification->decision->value,
             ),
             '',
-            "Your reason: {$notification->reason}",
+            "Your reason: {$this->quoted($notification->reason)}",
         ];
 
         if ($notification->message !== null) {
-            $lines[] = "Message from your manager: {$notification->message}";
+            $lines[] = "Message from your manager: {$this->quoted($notification->message)}";
         }
 
         return implode("\r\n", $lines) . "\r\n";
+    }
+
+    /**
+     * Text a person wrote, as one line: a stored name may still contain line breaks from before they
+     * were refused at input.
+     */
+    private function oneLine(string $text): string
+    {
+        return trim((string) preg_replace('/[\p{Cc}\x{2028}\x{2029}]+/u', ' ', $text));
+    }
+
+    /**
+     * Text a person wrote, which may run over several lines. The lines after the first are indented, so
+     * that none of them can start with "Message from your manager:" or any other label of this email and
+     * pass for something the system said. Control characters other than the line breaks are dropped.
+     */
+    private function quoted(string $text): string
+    {
+        $lines = preg_split('/\R/u', trim($text));
+        if ($lines === false) {
+            $lines = preg_split('/\R/', trim($text)) ?: [];
+        }
+
+        $lines = array_map(static fn (string $line): string => (string) preg_replace('/[^\P{Cc}\t]/u', '', $line), $lines);
+        $first = array_shift($lines) ?? '';
+
+        return implode("\r\n", [$first, ...array_map(static fn (string $line): string => $line === '' ? '' : '    ' . $line, $lines)]);
     }
 }

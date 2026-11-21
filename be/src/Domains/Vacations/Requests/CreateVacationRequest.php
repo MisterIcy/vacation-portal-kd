@@ -44,7 +44,7 @@ final readonly class CreateVacationRequest
     {
         $body = RequestBody::fromRequest($request);
 
-        $reason = trim($body->requiredString('reason'));
+        $reason = trim($body->requiredText('reason'));
         if ($reason === '') {
             throw new InvalidArgumentException("'reason' must not be empty.");
         }
