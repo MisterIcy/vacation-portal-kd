@@ -231,6 +231,25 @@ describe('API › Authorization matrix', () => {
         .should('eq', 400);
     });
 
+    it('MGR-REQ-08 a user promoted to manager cannot decide on their own pending request', () => {
+      create({ from: isoInDays(30), to: isoInDays(31), reason: 'Asked before being promoted' }).then(({ body: vacation }) => {
+        cy.apiAs('manager', { method: 'PUT', url: `/api/users/${employee.id}`, body: { role: 'manager' } }).its('status').should('eq', 200);
+
+        ['approve', 'reject'].forEach((decision) => {
+          cy.apiAs(employee, { method: 'PUT', url: `/api/vacations/${vacation.id}/${decision}` }).then((response) => {
+            expect(response.status).to.eq(403);
+            expect(response.body.reason_phrase).to.contain('your own');
+          });
+        });
+
+        cy.apiAs('manager', { method: 'GET', url: '/api/vacations?status=pending' }).then(({ body: pending }) => {
+          expect(pending.map((v) => v.id)).to.include(vacation.id);
+        });
+        // Someone else still can.
+        cy.decideViaApi(vacation.id, 'approve').its('status').should('eq', 200);
+      });
+    });
+
     it('MGR-REQ-04 a request can be decided once; the second decision is a 409 and changes nothing', () => {
       create({ from: isoInDays(30), to: isoInDays(31), reason: 'Decide once' }).then(({ body: vacation }) => {
         cy.decideViaApi(vacation.id, 'approve').its('status').should('eq', 200);

@@ -25,7 +25,7 @@ readonly class DecideVacation
     }
 
     /**
-     * @throws AccessDenied when the caller is not a manager
+     * @throws AccessDenied when the caller is not a manager, or is the one who asked for this leave
      * @throws InvalidArgumentException when there is no such request
      * @throws VacationNotPending when it was already decided
      */
@@ -35,7 +35,7 @@ readonly class DecideVacation
     }
 
     /**
-     * @throws AccessDenied when the caller is not a manager
+     * @throws AccessDenied when the caller is not a manager, or is the one who asked for this leave
      * @throws InvalidArgumentException when there is no such request
      * @throws VacationNotPending when it was already decided
      */
@@ -53,7 +53,15 @@ readonly class DecideVacation
             throw AccessDenied::forRole();
         }
 
-        $decided = $decision($this->vacations->findById($vacationId));
+        $vacation = $this->vacations->findById($vacationId);
+
+        // A person can be promoted while they still have a request waiting. The rule is about who asked,
+        // not about what role they have today.
+        if ($vacation->getUserId() === $by->id()) {
+            throw AccessDenied::forOwnRequest();
+        }
+
+        $decided = $decision($vacation);
 
         return $this->vacations->updateStatus($vacationId, $by->id(), $decided->getStatus());
     }

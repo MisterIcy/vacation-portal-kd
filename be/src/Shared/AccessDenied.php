@@ -15,4 +15,12 @@ final class AccessDenied extends RuntimeException
     {
         return new self('Forbidden');
     }
+
+    /**
+     * Whoever asked for leave does not also decide on it, whatever their role is now.
+     */
+    public static function forOwnRequest(): self
+    {
+        return new self('You cannot decide on your own vacation request.');
+    }
 }

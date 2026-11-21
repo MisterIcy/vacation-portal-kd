@@ -125,6 +125,42 @@ class VacationUseCasesTest extends TestCase
         (new DecideVacation($repository))->reject(Principal::employee(2), 5);
     }
 
+    /**
+     * A person promoted to manager while their own request is waiting must not decide it.
+     */
+    public function testAManagerCannotApproveTheirOwnRequestAndNothingIsWritten(): void
+    {
+        $repository = $this->createMock(VacationRequestRepository::class);
+        $repository->method('findById')->willReturn($this->vacation(VacationStatus::Pending, ownerId: 7));
+        $repository->expects($this->never())->method('updateStatus');
+
+        $this->expectException(AccessDenied::class);
+        $this->expectExceptionMessage('You cannot decide on your own vacation request.');
+
+        (new DecideVacation($repository))->approve(Principal::manager(7), 5);
+    }
+
+    public function testAManagerCannotRejectTheirOwnRequestEither(): void
+    {
+        $repository = $this->createMock(VacationRequestRepository::class);
+        $repository->method('findById')->willReturn($this->vacation(VacationStatus::Pending, ownerId: 7));
+        $repository->expects($this->never())->method('updateStatus');
+
+        $this->expectException(AccessDenied::class);
+
+        (new DecideVacation($repository))->reject(Principal::manager(7), 5);
+    }
+
+    public function testAManagerStillDecidesOnSomeoneElsesRequest(): void
+    {
+        $pending = $this->vacation(VacationStatus::Pending, ownerId: 2);
+        $repository = $this->createMock(VacationRequestRepository::class);
+        $repository->method('findById')->willReturn($pending);
+        $repository->expects($this->once())->method('updateStatus')->willReturn($pending->approve(7));
+
+        (new DecideVacation($repository))->approve(Principal::manager(7), 5);
+    }
+
     public function testADecidedRequestCannotBeDecidedAgainAndIsNotWritten(): void
     {
         $repository = $this->createMock(VacationRequestRepository::class);
